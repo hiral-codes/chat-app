@@ -1,0 +1,47 @@
+scalar AWSDateTime
+
+type User {
+  userId: ID!
+  displayName: String!
+  avatarUrl: String
+}
+
+type Conversation {
+  conversationId: ID!
+  participants: [User!]!
+  lastMessagePreview: String
+  lastMessageAt: AWSDateTime
+}
+
+type Message {
+  messageId: ID!
+  conversationId: ID!
+  senderId: ID!
+  content: String!
+  createdAt: AWSDateTime!
+}
+
+type ConversationConnection {
+  items: [Conversation!]!
+  nextToken: String
+}
+
+type MessageConnection {
+  items: [Message!]!
+  nextToken: String
+}
+
+type Query {
+  listConversations(limit: Int = 20, nextToken: String): ConversationConnection!
+  listMessages(conversationId: ID!, limit: Int = 30, nextToken: String): MessageConnection!
+}
+
+type Mutation {
+  startConversation(otherUserId: ID!): Conversation!
+  sendMessage(conversationId: ID!, content: String!): Message!
+}
+
+type Subscription {
+  onMessageSent(conversationId: ID!): Message
+    @aws_subscribe(mutations: ["sendMessage"])
+}

@@ -1,0 +1,14 @@
+node_modules
+.next
+cdk.out
+.env.local
+.env*.local
+*.tsbuildinfo
+AWSCLIV2.pkg
+dist
+out
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.DS_Store
