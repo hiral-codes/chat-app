@@ -12,35 +12,59 @@ export default function ChatInboxPage() {
   const [nextToken, setNextToken] = useState<string | null>(null);
   const [peerUserId, setPeerUserId] = useState("");
   const [userId, setUserId] = useState<string>("");
+  const [error, setError] = useState<string>("");
 
   useEffect(() => {
     const run = async () => {
-      const session = await fetchAuthSession();
-      if (!session.tokens) {
+      try {
+        const session = await fetchAuthSession();
+        if (!session.tokens) {
+          window.location.href = "/login";
+          return;
+        }
+
+        const user = await getCurrentUser();
+        setUserId(user.userId);
+      } catch {
         window.location.href = "/login";
         return;
       }
-      const user = await getCurrentUser();
-      setUserId(user.userId);
-      const data = await listConversations();
-      setConversations(data.items);
-      setNextToken(data.nextToken ?? null);
+
+      try {
+        const data = await listConversations();
+        setConversations(data.items);
+        setNextToken(data.nextToken ?? null);
+      } catch (apiError) {
+        console.error("Failed to load conversations", apiError);
+        setError("You are signed in, but conversations could not be loaded. Check the AppSync/API configuration.");
+      }
     };
-    run().catch(() => (window.location.href = "/login"));
+    run();
   }, []);
 
   const loadMore = async () => {
     if (!nextToken) return;
-    const data = await listConversations(20, nextToken);
-    setConversations((prev) => [...prev, ...data.items]);
-    setNextToken(data.nextToken ?? null);
+    try {
+      const data = await listConversations(20, nextToken);
+      setConversations((prev) => [...prev, ...data.items]);
+      setNextToken(data.nextToken ?? null);
+    } catch (apiError) {
+      console.error("Failed to load more conversations", apiError);
+      setError("Could not load more conversations.");
+    }
   };
 
   const createConversation = async () => {
     if (!peerUserId.trim()) return;
-    const conversation = await startConversation(peerUserId.trim());
-    setConversations((prev) => [conversation, ...prev.filter((c) => c.conversationId !== conversation.conversationId)]);
-    setPeerUserId("");
+    try {
+      const conversation = await startConversation(peerUserId.trim());
+      setConversations((prev) => [conversation, ...prev.filter((c) => c.conversationId !== conversation.conversationId)]);
+      setPeerUserId("");
+      setError("");
+    } catch (apiError) {
+      console.error("Failed to start conversation", apiError);
+      setError("Could not start that conversation.");
+    }
   };
 
   return (
@@ -63,6 +87,8 @@ export default function ChatInboxPage() {
           Start
         </button>
       </div>
+
+      {error ? <p style={{ color: "#fca5a5", marginTop: 0 }}>{error}</p> : null}
 
       <ConversationList conversations={conversations} />
       {nextToken ? (

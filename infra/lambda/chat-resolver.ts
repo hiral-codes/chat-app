@@ -10,7 +10,10 @@ const client = new DynamoDBClient({});
 const tableName = process.env.CHAT_TABLE_NAME ?? "";
 
 type AppSyncEvent = {
-  fieldName: string;
+  fieldName?: string;
+  info?: {
+    fieldName?: string;
+  };
   arguments: Record<string, unknown>;
   identity?: { sub?: string };
 };
@@ -28,6 +31,19 @@ const decodeToken = (token?: string) => (token ? JSON.parse(Buffer.from(token, "
 const userKey = (userId: string) => `USER#${userId}`;
 const convKey = (conversationId: string) => `CONV#${conversationId}`;
 const participantHash = (a: string, b: string) => [a, b].sort().join("#");
+const toStringArray = (value: unknown): string[] => {
+  if (Array.isArray(value)) return value.map(String);
+  if (value instanceof Set) return Array.from(value).map(String);
+  return [];
+};
+
+const toUser = (id: string) => ({ userId: id, displayName: id, avatarUrl: null });
+const toConversation = (item: Record<string, unknown>) => ({
+  conversationId: String(item.conversationId),
+  participants: toStringArray(item.participantIds).map(toUser),
+  lastMessagePreview: item.lastMessagePreview ?? null,
+  lastMessageAt: item.lastMessageAt ?? null
+});
 
 async function startConversation(currentUserId: string, otherUserId: string) {
   const participantsHash = participantHash(currentUserId, otherUserId);
@@ -45,7 +61,7 @@ async function startConversation(currentUserId: string, otherUserId: string) {
   );
 
   if (existing.Items?.[0]) {
-    return unmarshall(existing.Items[0]);
+    return toConversation(unmarshall(existing.Items[0]));
   }
 
   const conversationId = crypto.randomUUID();
@@ -101,7 +117,7 @@ async function startConversation(currentUserId: string, otherUserId: string) {
 
   return {
     conversationId,
-    participants: conversation.participantIds.map((id) => ({ userId: id, displayName: id, avatarUrl: null })),
+    participants: conversation.participantIds.map(toUser),
     lastMessagePreview: null,
     lastMessageAt: createdAt
   };
@@ -124,12 +140,7 @@ async function listConversations(currentUserId: string, limit = 20, nextToken?: 
 
   const items = (result.Items ?? []).map((i) => unmarshall(i));
   return {
-    items: items.map((item) => ({
-      conversationId: item.conversationId,
-      participants: (item.participantIds ?? []).map((id: string) => ({ userId: id, displayName: id, avatarUrl: null })),
-      lastMessagePreview: item.lastMessagePreview ?? null,
-      lastMessageAt: item.lastMessageAt ?? null
-    })),
+    items: items.map(toConversation),
     nextToken: encodeToken(result.LastEvaluatedKey)
   };
 }
@@ -149,7 +160,7 @@ async function listMessages(currentUserId: string, conversationId: string, limit
 
   const meta = conversationMeta.Items?.[0];
   if (!meta) throw new Error("Conversation not found");
-  const participants = (unmarshall(meta).participantIds ?? []) as string[];
+  const participants = toStringArray(unmarshall(meta).participantIds);
   if (!participants.includes(currentUserId)) throw new Error("Forbidden");
 
   const result = await client.send(
@@ -200,7 +211,7 @@ async function sendMessage(currentUserId: string, conversationId: string, conten
   const convItem = conversationMeta.Items?.[0];
   if (!convItem) throw new Error("Conversation not found");
   const conv = unmarshall(convItem);
-  const participants = conv.participantIds as string[];
+  const participants = toStringArray(conv.participantIds);
   if (!participants.includes(currentUserId)) throw new Error("Forbidden");
 
   await client.send(
@@ -257,8 +268,9 @@ async function sendMessage(currentUserId: string, conversationId: string, conten
 
 export const handler = async (event: AppSyncEvent) => {
   const userId = assertAuthed(event);
+  const fieldName = event.fieldName ?? event.info?.fieldName;
 
-  switch (event.fieldName) {
+  switch (fieldName) {
     case "startConversation":
       return startConversation(userId, String(event.arguments.otherUserId));
     case "listConversations":
@@ -279,6 +291,6 @@ export const handler = async (event: AppSyncEvent) => {
     case "onMessageSent":
       return null;
     default:
-      throw new Error(`Unknown field ${event.fieldName}`);
+      throw new Error(`Unknown field ${fieldName}`);
   }
 };

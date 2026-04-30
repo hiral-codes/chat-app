@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { getCurrentUser } from "aws-amplify/auth";
+import { fetchAuthSession, getCurrentUser } from "aws-amplify/auth";
 import { MessageInput } from "@/components/chat/MessageInput";
 import { MessageList } from "@/components/chat/MessageList";
 import { listMessages, sendMessage, subscribeToMessages } from "@/lib/chat/api";
 import { Message } from "@/lib/types/chat";
+
+const dedupeMessages = (messages: Message[]) => Array.from(new Map(messages.map((message) => [message.messageId, message])).values());
 
 export default function ConversationPage() {
   const params = useParams<{ conversationId: string }>();
@@ -15,33 +17,74 @@ export default function ConversationPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [nextToken, setNextToken] = useState<string | null>(null);
   const [userId, setUserId] = useState<string>();
+  const [error, setError] = useState<string>("");
 
   useEffect(() => {
-    const run = async () => {
-      const user = await getCurrentUser();
-      setUserId(user.userId);
-      const data = await listMessages(conversationId);
-      setMessages(data.items.reverse());
-      setNextToken(data.nextToken ?? null);
-    };
-    run().catch(() => (window.location.href = "/login"));
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
 
-    const unsubscribe = subscribeToMessages(conversationId, (incoming) => {
-      setMessages((prev) => (prev.some((m) => m.messageId === incoming.messageId) ? prev : [...prev, incoming]));
-    });
-    return unsubscribe;
+    const run = async () => {
+      try {
+        const session = await fetchAuthSession();
+        if (!session.tokens) {
+          window.location.href = "/login";
+          return;
+        }
+
+        const user = await getCurrentUser();
+        if (cancelled) return;
+        setUserId(user.userId);
+      } catch {
+        window.location.href = "/login";
+        return;
+      }
+
+      try {
+        const data = await listMessages(conversationId);
+        if (cancelled) return;
+        setMessages(dedupeMessages(data.items.reverse()));
+        setNextToken(data.nextToken ?? null);
+
+        unsubscribe = subscribeToMessages(conversationId, (incoming) => {
+          setMessages((prev) => dedupeMessages([...prev, incoming]));
+        });
+        if (cancelled) unsubscribe();
+      } catch (apiError) {
+        console.error("Failed to load messages", apiError);
+        if (cancelled) return;
+        setError("You are signed in, but this conversation could not be loaded.");
+      }
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, [conversationId]);
 
   const onSend = async (content: string) => {
-    const sent = await sendMessage(conversationId, content);
-    setMessages((prev) => (prev.some((m) => m.messageId === sent.messageId) ? prev : [...prev, sent]));
+    try {
+      const sent = await sendMessage(conversationId, content);
+      setMessages((prev) => dedupeMessages([...prev, sent]));
+      setError("");
+    } catch (apiError) {
+      console.error("Failed to send message", apiError);
+      setError("Could not send that message.");
+    }
   };
 
   const loadOlder = async () => {
     if (!nextToken) return;
-    const data = await listMessages(conversationId, 30, nextToken);
-    setMessages((prev) => [...data.items.reverse(), ...prev]);
-    setNextToken(data.nextToken ?? null);
+    try {
+      const data = await listMessages(conversationId, 30, nextToken);
+      setMessages((prev) => dedupeMessages([...data.items.reverse(), ...prev]));
+      setNextToken(data.nextToken ?? null);
+    } catch (apiError) {
+      console.error("Failed to load older messages", apiError);
+      setError("Could not load older messages.");
+    }
   };
 
   return (
@@ -55,6 +98,7 @@ export default function ConversationPage() {
           Load older messages
         </button>
       ) : null}
+      {error ? <p style={{ color: "#fca5a5", marginTop: 0 }}>{error}</p> : null}
       <MessageList messages={messages} currentUserId={userId} />
       <div style={{ marginTop: 12 }}>
         <MessageInput onSend={onSend} />
