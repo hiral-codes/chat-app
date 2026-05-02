@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { fetchAuthSession } from "aws-amplify/auth";
+import { ensureAmplifyConfigured } from "@/lib/aws/amplify-config";
+
+ensureAmplifyConfigured();
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

@@ -8,6 +8,9 @@ import { MessageInput } from "@/components/chat/MessageInput";
 import { MessageList } from "@/components/chat/MessageList";
 import { listMessages, sendMessage, subscribeToMessages } from "@/lib/chat/api";
 import { Message } from "@/lib/types/chat";
+import { ensureAmplifyConfigured } from "@/lib/aws/amplify-config";
+
+ensureAmplifyConfigured();
 
 const dedupeMessages = (messages: Message[]) => Array.from(new Map(messages.map((message) => [message.messageId, message])).values());
 

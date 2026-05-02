@@ -6,6 +6,12 @@ import { fetchAuthSession, getCurrentUser, signOut } from "aws-amplify/auth";
 import { ConversationList } from "@/components/chat/ConversationList";
 import { listConversations, startConversation } from "@/lib/chat/api";
 import { Conversation } from "@/lib/types/chat";
+import { ensureAmplifyConfigured } from "@/lib/aws/amplify-config";
+
+ensureAmplifyConfigured();
+
+const dedupeConversations = (conversations: Conversation[]) =>
+  Array.from(new Map(conversations.map((conversation) => [conversation.conversationId, conversation])).values());
 
 export default function ChatInboxPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -32,7 +38,7 @@ export default function ChatInboxPage() {
 
       try {
         const data = await listConversations();
-        setConversations(data.items);
+        setConversations(dedupeConversations(data.items));
         setNextToken(data.nextToken ?? null);
       } catch (apiError) {
         console.error("Failed to load conversations", apiError);
@@ -46,7 +52,7 @@ export default function ChatInboxPage() {
     if (!nextToken) return;
     try {
       const data = await listConversations(20, nextToken);
-      setConversations((prev) => [...prev, ...data.items]);
+      setConversations((prev) => dedupeConversations([...prev, ...data.items]));
       setNextToken(data.nextToken ?? null);
     } catch (apiError) {
       console.error("Failed to load more conversations", apiError);
@@ -58,7 +64,7 @@ export default function ChatInboxPage() {
     if (!peerUserId.trim()) return;
     try {
       const conversation = await startConversation(peerUserId.trim());
-      setConversations((prev) => [conversation, ...prev.filter((c) => c.conversationId !== conversation.conversationId)]);
+      setConversations((prev) => dedupeConversations([conversation, ...prev]));
       setPeerUserId("");
       setError("");
     } catch (apiError) {

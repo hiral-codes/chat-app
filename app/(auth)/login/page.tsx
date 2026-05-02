@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { fetchAuthSession, signInWithRedirect } from "aws-amplify/auth";
+import { ensureAmplifyConfigured } from "@/lib/aws/amplify-config";
+
+ensureAmplifyConfigured();
 
 export default function LoginPage() {
   const [isSigningIn, setIsSigningIn] = useState(false);
