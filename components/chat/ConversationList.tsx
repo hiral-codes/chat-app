@@ -17,6 +17,22 @@ type Props = {
   onUnarchive?: (conversationId: string) => void;
 };
 
+const truncate = (value: string, maxLength: number) => {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength - 1)}…`;
+};
+
+const looksLikeEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
+
+const nameFromEmail = (email: string) =>
+  email
+    .split("@")[0]
+    .replace(/[._-]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+
 export function ConversationList({
   conversations,
   selectedConversationId,
@@ -48,10 +64,16 @@ export function ConversationList({
       {conversations.map((conversation) => {
         const selected = selectedConversationId === conversation.conversationId;
         const visibleParticipants = conversation.participants.filter((participant) => participant.userId !== currentUserId);
-        const title = (visibleParticipants.length ? visibleParticipants : conversation.participants)
-          .map((participant) => participant.displayName)
+        const titleParticipants = visibleParticipants.length ? visibleParticipants : conversation.participants;
+        const title = titleParticipants
+          .map((participant) => (looksLikeEmail(participant.displayName) ? nameFromEmail(participant.displayName) : participant.displayName))
           .join(", ");
-        const avatarUser = (visibleParticipants.length ? visibleParticipants : conversation.participants)[0];
+        const email = titleParticipants
+          .map((participant) => participant.email || (looksLikeEmail(participant.displayName) ? participant.displayName : ""))
+          .filter(Boolean)
+          .join(", ");
+        const preview = conversation.lastMessagePreview || "Start chatting...";
+        const avatarUser = titleParticipants[0];
         const archived = archivedConversationIds.includes(conversation.conversationId);
         const unreadCount = unreadCountsByConversationId[conversation.conversationId] ?? 0;
 
@@ -62,24 +84,32 @@ export function ConversationList({
               display: "flex",
               alignItems: "center",
               gap: 12,
+              minWidth: 0,
+              overflow: "hidden",
               border: `1px solid ${selected ? "rgba(14, 165, 233, 0.42)" : "rgba(148, 163, 184, 0.18)"}`,
               background: selected ? "rgba(224, 242, 254, 0.78)" : "rgba(255, 255, 255, 0.54)",
               padding: 12,
               borderRadius: 8,
-              boxShadow: selected ? "0 14px 32px rgba(14, 165, 233, 0.12)" : "0 10px 24px rgba(15, 23, 42, 0.05)",
-              transition: "border-color 160ms ease, background 160ms ease, box-shadow 160ms ease"
+              transition: "border-color 160ms ease, background 160ms ease"
             }}
           >
-            <Link href={`/chat/${conversation.conversationId}`} style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: 1 }}>
+            <Link href={`/chat/${conversation.conversationId}`} style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, overflow: "hidden", flex: 1 }}>
               <Avatar user={avatarUser} label={title} />
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: 1 }}>{title}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, maxWidth: "100%" }}>
+                  <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, maxWidth: "100%", flex: 1 }} title={title}>
+                    {truncate(title, 28)}
+                  </div>
                   {unreadCount ? <span className="conversation-unread-badge">{unreadCount > 99 ? "99+" : unreadCount}</span> : null}
                 </div>
-                <div style={{ color: unreadCount ? "#172033" : "#64748b", fontSize: 14, fontWeight: unreadCount ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {conversation.lastMessagePreview || "Start chatting..."}
+                <div style={{ color: unreadCount ? "#172033" : "#64748b", fontSize: 14, fontWeight: unreadCount ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }} title={preview}>
+                  {truncate(preview, 42)}
                 </div>
+                {email ? (
+                  <div className="conversation-email" title={email}>
+                    {truncate(email, 34)}
+                  </div>
+                ) : null}
               </div>
             </Link>
             {mode === "archived" ? (

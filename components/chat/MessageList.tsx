@@ -149,16 +149,15 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
               <div
                 style={{
                   maxWidth: "75%",
-                  background: mine ? "linear-gradient(135deg, #0ea5e9, #2563eb)" : "rgba(255, 255, 255, 0.76)",
-                  color: mine ? "#ffffff" : "#172033",
-                  padding: "10px 12px",
-                  borderRadius: 8,
-                  border: mine ? "1px solid rgba(37, 99, 235, 0.2)" : "1px solid rgba(148, 163, 184, 0.22)",
-                  boxShadow: "0 10px 30px rgba(15, 23, 42, 0.1)"
+                  background: mine ? "#dff3ff" : "rgba(255, 255, 255, 0.76)",
+                  color: "#172033",
+                  padding: "8px 11px",
+                  borderRadius: mine ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
+                  border: mine ? "1px solid rgba(14, 165, 233, 0.32)" : "1px solid rgba(148, 163, 184, 0.22)"
                 }}
               >
-                <div style={{ fontSize: 12, color: mine ? "#dbeafe" : "#64748b", marginBottom: 4 }}>{senderName}</div>
-                <div>{message.content}</div>
+                {!mine ? <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>{senderName}</div> : null}
+                <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", lineHeight: 1.45 }}>{message.content}</div>
                 <div
                   style={{
                     display: "flex",
@@ -166,8 +165,8 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
                     justifyContent: "flex-end",
                     gap: 6,
                     fontSize: 12,
-                    color: mine ? "#dbeafe" : "#64748b",
-                    marginTop: 4
+                    color: "#64748b",
+                    marginTop: 3
                   }}
                 >
                   <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
@@ -176,7 +175,7 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
                       aria-label={seen || message.deliveryStatus === "seen" ? "Seen" : message.deliveryStatus === "sending" ? "Sending" : message.deliveryStatus === "failed" ? "Failed" : "Sent"}
                       title={seen || message.deliveryStatus === "seen" ? "Seen" : message.deliveryStatus === "sending" ? "Sending" : message.deliveryStatus === "failed" ? "Failed" : "Sent"}
                       style={{
-                        color: message.deliveryStatus === "failed" ? "#fecaca" : message.deliveryStatus === "sending" ? "#dbeafe" : "#bfdbfe",
+                        color: message.deliveryStatus === "failed" ? "#dc2626" : message.deliveryStatus === "sending" ? "#64748b" : "#2563eb",
                         fontWeight: 700,
                         letterSpacing: 0
                       }}
@@ -212,7 +211,6 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
             justifyContent: "center",
             gap: 8,
             padding: newMessagesCount ? "0 14px" : 0,
-            boxShadow: "0 14px 35px rgba(15, 23, 42, 0.14)",
             cursor: "pointer",
             fontSize: newMessagesCount ? 13 : 22,
             fontWeight: 700,

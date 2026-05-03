@@ -46,8 +46,7 @@ export function MessageInput({ onSend }: Props) {
           display: "grid",
           placeItems: "center",
           cursor: value.trim() ? "pointer" : "not-allowed",
-          boxShadow: value.trim() ? "0 10px 24px rgba(37, 99, 235, 0.28)" : "none",
-          transition: "background 160ms ease, box-shadow 160ms ease"
+          transition: "background 160ms ease"
         }}
       >
         <span
