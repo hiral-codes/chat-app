@@ -74,6 +74,7 @@ export class ChatInfraStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       entry: path.join(__dirname, "..", "lambda", "chat-resolver.ts"),
       handler: "handler",
+      timeout: cdk.Duration.seconds(10),
       environment: {
         CHAT_TABLE_NAME: chatTable.tableName,
         USER_POOL_ID: userPool.userPoolId

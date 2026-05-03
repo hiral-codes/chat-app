@@ -33,11 +33,16 @@ const encodeToken = (key: unknown) => (key ? Buffer.from(JSON.stringify(key)).to
 const decodeToken = (token?: string) => (token ? JSON.parse(Buffer.from(token, "base64").toString("utf-8")) : undefined);
 const userKey = (userId: string) => `USER#${userId}`;
 const convKey = (conversationId: string) => `CONV#${conversationId}`;
+const membershipKey = (conversationId: string) => `CONV#${conversationId}`;
 const participantHash = (a: string, b: string) => [a, b].sort().join("#");
 const toStringArray = (value: unknown): string[] => {
   if (Array.isArray(value)) return value.map(String);
   if (value instanceof Set) return Array.from(value).map(String);
   return [];
+};
+const clampLimit = (limit: number, fallback: number, max: number) => {
+  if (!Number.isFinite(limit) || limit < 1) return fallback;
+  return Math.min(Math.floor(limit), max);
 };
 
 const attribute = (attributes: { Name?: string; Value?: string }[] | undefined, name: string) =>
@@ -50,6 +55,21 @@ const displayNameFromAttributes = (attributes: { Name?: string; Value?: string }
   fallback;
 
 const toUser = (id: string, displayName = id) => ({ userId: id, displayName, avatarUrl: null });
+type UserProfile = ReturnType<typeof toUser>;
+type LoadUserProfile = (userId: string) => Promise<UserProfile>;
+
+const createUserProfileLoader = (): LoadUserProfile => {
+  const cache = new Map<string, Promise<UserProfile>>();
+
+  return (userId: string) => {
+    const cached = cache.get(userId);
+    if (cached) return cached;
+
+    const profile = getUserProfile(userId);
+    cache.set(userId, profile);
+    return profile;
+  };
+};
 
 async function getUserProfile(userId: string) {
   if (!userPoolId) return toUser(userId);
@@ -91,9 +111,9 @@ async function findUserByEmail(email: string) {
   return toUser(userId, displayNameFromAttributes(user.Attributes ?? [], trimmedEmail));
 }
 
-async function toConversation(item: Record<string, unknown>) {
-  const participantIds = toStringArray(item.participantIds);
-  const participants = await Promise.all(participantIds.map(getUserProfile));
+async function toConversation(item: Record<string, unknown>, loadUserProfile: LoadUserProfile = getUserProfile) {
+  const participantIds = Array.from(new Set(toStringArray(item.participantIds)));
+  const participants = await Promise.all(participantIds.map(loadUserProfile));
 
   return {
     conversationId: String(item.conversationId),
@@ -164,7 +184,7 @@ async function startConversation(currentUserId: string, otherUserEmail: string) 
             TableName: tableName,
             Item: {
               PK: { S: userKey(id) },
-              SK: { S: `CONV#${createdAt}#${conversationId}` },
+              SK: { S: membershipKey(conversationId) },
               entityType: { S: "MEMBERSHIP" },
               conversationId: { S: conversationId },
               participantIds: { SS: conversation.participantIds },
@@ -186,24 +206,46 @@ async function startConversation(currentUserId: string, otherUserEmail: string) 
 }
 
 async function listConversations(currentUserId: string, limit = 20, nextToken?: string) {
-  const result = await client.send(
-    new QueryCommand({
-      TableName: tableName,
-      IndexName: "GSI1",
-      KeyConditionExpression: "GSI1PK = :pk",
-      ExpressionAttributeValues: {
-        ":pk": { S: userKey(currentUserId) }
-      },
-      ExclusiveStartKey: decodeToken(nextToken),
-      ScanIndexForward: false,
-      Limit: limit
-    })
-  );
+  const pageSize = clampLimit(limit, 20, 50);
+  const seenConversationIds = new Set<string>();
+  const items: Record<string, unknown>[] = [];
+  let exclusiveStartKey = decodeToken(nextToken);
+  let attempts = 0;
 
-  const items = (result.Items ?? []).map((i) => unmarshall(i));
+  do {
+    const result = await client.send(
+      new QueryCommand({
+        TableName: tableName,
+        IndexName: "GSI1",
+        KeyConditionExpression: "GSI1PK = :pk",
+        ExpressionAttributeValues: {
+          ":pk": { S: userKey(currentUserId) }
+        },
+        ExclusiveStartKey: exclusiveStartKey,
+        ScanIndexForward: false,
+        Limit: pageSize
+      })
+    );
+
+    for (const rawItem of result.Items ?? []) {
+      const item = unmarshall(rawItem);
+      const conversationId = String(item.conversationId ?? "");
+      if (!conversationId || seenConversationIds.has(conversationId)) continue;
+
+      seenConversationIds.add(conversationId);
+      items.push(item);
+      if (items.length === pageSize) break;
+    }
+
+    exclusiveStartKey = result.LastEvaluatedKey;
+    attempts += 1;
+  } while (items.length < pageSize && exclusiveStartKey && attempts < 3);
+
+  const loadUserProfile = createUserProfileLoader();
+
   return {
-    items: await Promise.all(items.map(toConversation)),
-    nextToken: encodeToken(result.LastEvaluatedKey)
+    items: await Promise.all(items.map((item) => toConversation(item, loadUserProfile))),
+    nextToken: encodeToken(exclusiveStartKey)
   };
 }
 
@@ -225,7 +267,7 @@ async function getConversation(currentUserId: string, conversationId: string) {
   const conversation = unmarshall(item);
   const participants = toStringArray(conversation.participantIds);
   if (!participants.includes(currentUserId)) throw new Error("Forbidden");
-  return toConversation(conversation);
+  return toConversation(conversation, createUserProfileLoader());
 }
 
 async function listMessages(currentUserId: string, conversationId: string, limit = 30, nextToken?: string) {
@@ -331,7 +373,7 @@ async function sendMessage(currentUserId: string, conversationId: string, conten
             TableName: tableName,
             Item: {
               PK: { S: userKey(participantId) },
-              SK: { S: `CONV#${timestamp}#${conversationId}` },
+              SK: { S: membershipKey(conversationId) },
               entityType: { S: "MEMBERSHIP" },
               conversationId: { S: conversationId },
               participantIds: { SS: participants },
