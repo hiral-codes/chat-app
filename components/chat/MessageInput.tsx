@@ -27,9 +27,9 @@ export function MessageInput({ onSend }: Props) {
           flex: 1,
           padding: 12,
           borderRadius: 8,
-          border: "1px solid #334155",
-          background: "#0b1220",
-          color: "#e2e8f0"
+          border: "1px solid rgba(148, 163, 184, 0.32)",
+          background: "rgba(255, 255, 255, 0.72)",
+          color: "#172033"
         }}
       />
       <button
@@ -41,7 +41,7 @@ export function MessageInput({ onSend }: Props) {
           height: 44,
           borderRadius: "50%",
           border: 0,
-          background: value.trim() ? "#2563eb" : "#1f2937",
+          background: value.trim() ? "linear-gradient(135deg, #0ea5e9, #2563eb)" : "rgba(148, 163, 184, 0.26)",
           color: "white",
           display: "grid",
           placeItems: "center",

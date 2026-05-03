@@ -9,6 +9,7 @@ type Props = {
   currentUserId?: string;
   participants?: User[];
   loading?: boolean;
+  fullHeight?: boolean;
 };
 
 const bottomThreshold = 96;
@@ -19,7 +20,7 @@ const ticksFor = (message: Message) => {
   return "✓✓";
 };
 
-export function MessageList({ messages, currentUserId, participants = [], loading = false }: Props) {
+export function MessageList({ messages, currentUserId, participants = [], loading = false, fullHeight = false }: Props) {
   const participantById = new Map(participants.map((participant) => [participant.userId, participant]));
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const previousMessageCountRef = useRef(0);
@@ -86,7 +87,7 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
 
   if (loading) {
     return (
-      <div style={{ display: "grid", gap: 10, padding: "8px 4px" }}>
+      <div style={{ display: "grid", gap: 10, padding: "8px 4px", alignContent: "start", minHeight: fullHeight ? 0 : undefined }}>
         {[0, 1, 2, 3].map((item) => (
           <div
             key={item}
@@ -104,20 +105,21 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
   }
 
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative", minHeight: fullHeight ? 0 : undefined, height: fullHeight ? "100%" : undefined }}>
       <div
         ref={scrollContainerRef}
         onScroll={updateScrollButton}
         style={{
           display: "grid",
           gap: 8,
-          maxHeight: "60vh",
+          height: fullHeight ? "100%" : undefined,
+          maxHeight: fullHeight ? "none" : "60vh",
           overflowY: "auto",
           padding: "8px 4px 18px",
           scrollBehavior: "smooth"
         }}
       >
-        {!messages.length ? <p style={{ color: "#94a3b8", textAlign: "center" }}>No messages yet.</p> : null}
+        {!messages.length ? <p style={{ color: "#64748b", textAlign: "center" }}>No messages yet.</p> : null}
         {messages.map((message) => {
           const mine = currentUserId === message.senderId;
           const sender = participantById.get(message.senderId);
@@ -137,13 +139,15 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
               <div
                 style={{
                   maxWidth: "75%",
-                  background: mine ? "#1d4ed8" : "#1f2937",
+                  background: mine ? "linear-gradient(135deg, #0ea5e9, #2563eb)" : "rgba(255, 255, 255, 0.76)",
+                  color: mine ? "#ffffff" : "#172033",
                   padding: "10px 12px",
                   borderRadius: 8,
-                  boxShadow: "0 10px 30px rgba(0, 0, 0, 0.16)"
+                  border: mine ? "1px solid rgba(37, 99, 235, 0.2)" : "1px solid rgba(148, 163, 184, 0.22)",
+                  boxShadow: "0 10px 30px rgba(15, 23, 42, 0.1)"
                 }}
               >
-                <div style={{ fontSize: 12, color: mine ? "#bfdbfe" : "#94a3b8", marginBottom: 4 }}>{senderName}</div>
+                <div style={{ fontSize: 12, color: mine ? "#dbeafe" : "#64748b", marginBottom: 4 }}>{senderName}</div>
                 <div>{message.content}</div>
                 <div
                   style={{
@@ -152,7 +156,7 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
                     justifyContent: "flex-end",
                     gap: 6,
                     fontSize: 12,
-                    color: "#cbd5e1",
+                    color: mine ? "#dbeafe" : "#64748b",
                     marginTop: 4
                   }}
                 >
@@ -162,7 +166,7 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
                       aria-label={message.deliveryStatus === "sending" ? "Sending" : message.deliveryStatus === "failed" ? "Failed" : "Sent"}
                       title={message.deliveryStatus === "sending" ? "Sending" : message.deliveryStatus === "failed" ? "Failed" : "Sent"}
                       style={{
-                        color: message.deliveryStatus === "failed" ? "#fca5a5" : message.deliveryStatus === "sending" ? "#bfdbfe" : "#93c5fd",
+                        color: message.deliveryStatus === "failed" ? "#fecaca" : message.deliveryStatus === "sending" ? "#dbeafe" : "#bfdbfe",
                         fontWeight: 700,
                         letterSpacing: 0
                       }}
@@ -190,15 +194,15 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
             width: newMessagesCount ? "auto" : 42,
             height: 42,
             borderRadius: 999,
-            border: "1px solid #334155",
-            background: "#0f172a",
-            color: "#e2e8f0",
+            border: "1px solid rgba(148, 163, 184, 0.24)",
+            background: "rgba(255, 255, 255, 0.86)",
+            color: "#172033",
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
             gap: 8,
             padding: newMessagesCount ? "0 14px" : 0,
-            boxShadow: "0 14px 35px rgba(0, 0, 0, 0.35)",
+            boxShadow: "0 14px 35px rgba(15, 23, 42, 0.14)",
             cursor: "pointer",
             fontSize: newMessagesCount ? 13 : 22,
             fontWeight: 700,

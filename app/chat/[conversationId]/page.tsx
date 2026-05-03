@@ -1,17 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { fetchAuthSession } from "aws-amplify/auth";
 import { Avatar } from "@/components/chat/Avatar";
+import { ChatListColumn } from "@/components/chat/ChatListColumn";
 import { MessageInput } from "@/components/chat/MessageInput";
 import { MessageList } from "@/components/chat/MessageList";
+import { AppShell } from "@/components/layout/AppShell";
+import { GlassAlert, GlassButton, GlassModal } from "@/components/ui/Glass";
 import { ensureAmplifyConfigured } from "@/lib/aws/amplify-config";
 import { subscribeToMessages } from "@/lib/chat/api";
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
 import {
+  archiveConversation,
+  createConversationByEmail,
   initializeChat,
+  loadMoreConversations,
   loadOlderMessages,
   messageReceived,
   openConversation,
@@ -22,20 +28,31 @@ ensureAmplifyConfigured();
 
 export default function ConversationPage() {
   const params = useParams<{ conversationId: string }>();
+  const router = useRouter();
   const conversationId = useMemo(() => params.conversationId, [params.conversationId]);
   const [initialMessagesLoading, setInitialMessagesLoading] = useState(true);
+  const [peerEmail, setPeerEmail] = useState("");
+  const [composeOpen, setComposeOpen] = useState(false);
   const dispatch = useAppDispatch();
   const {
+    conversations,
+    archivedConversationIds,
     currentUser,
+    unreadCountsByConversationId,
     selectedConversation,
+    nextConversationToken,
     messagesByConversationId,
     messageNextTokens,
+    conversationsLoading,
+    creatingConversation,
+    loadingMoreConversations,
     messagesLoading,
     loadingOlderMessages,
     error
   } = useAppSelector((state) => state.chat);
 
   const messages = messagesByConversationId[conversationId] ?? [];
+  const activeConversations = conversations.filter((conversation) => !archivedConversationIds.includes(conversation.conversationId));
   const nextToken = messageNextTokens[conversationId];
   const visibleParticipants = selectedConversation?.participants.filter((participant) => participant.userId !== currentUser?.userId) ?? [];
   const titleParticipants = visibleParticipants.length ? visibleParticipants : selectedConversation?.participants ?? [];
@@ -90,40 +107,98 @@ export default function ConversationPage() {
     }
   };
 
-  return (
-    <main style={{ maxWidth: 900, margin: "30px auto", padding: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 12 }}>
-        <Link href="/chat" style={{ color: "#bfdbfe" }}>
-          Back to chats
-        </Link>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-          <div style={{ textAlign: "right", minWidth: 0 }}>
-            <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-            <div style={{ color: "#94a3b8", fontSize: 13 }}>Conversation</div>
-          </div>
-          <Avatar user={avatarUser} label={title} />
-        </div>
-      </div>
+  const createConversation = async (event: FormEvent) => {
+    event.preventDefault();
+    const email = peerEmail.trim();
+    if (!email || creatingConversation) return;
 
+    try {
+      const conversation = await dispatch(createConversationByEmail(email)).unwrap();
+      setPeerEmail("");
+      setComposeOpen(false);
+      router.push(`/chat/${conversation.conversationId}`);
+    } catch {
+      return;
+    }
+  };
+
+  return (
+    <AppShell>
+    <main className="chat-workspace chat-workspace-detail">
+      <ChatListColumn
+        conversations={activeConversations}
+        selectedConversationId={conversationId}
+        currentUserId={currentUser?.userId}
+        loading={conversationsLoading}
+        loadingMore={loadingMoreConversations}
+        hasMore={Boolean(nextConversationToken)}
+        archivedConversationIds={archivedConversationIds}
+        unreadCountsByConversationId={unreadCountsByConversationId}
+        onArchive={(id) => dispatch(archiveConversation(id))}
+        onLoadMore={() => dispatch(loadMoreConversations())}
+        onCompose={() => setComposeOpen(true)}
+      />
+      <section className="chat-detail-panel">
+      <header className="chat-detail-header">
+        <Link className="chat-back-button" href="/chat" aria-label="Back to chats" title="Back to chats">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15.53 4.47a.75.75 0 0 1 0 1.06L9.06 12l6.47 6.47a.75.75 0 1 1-1.06 1.06l-7-7a.75.75 0 0 1 0-1.06l7-7a.75.75 0 0 1 1.06 0Z" />
+          </svg>
+        </Link>
+        <div className="chat-detail-title">
+          <Avatar user={avatarUser} label={title} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+            <div style={{ color: "#64748b", fontSize: 13 }}>Conversation</div>
+          </div>
+        </div>
+      </header>
+
+      <div className="chat-detail-body">
       {nextToken ? (
         <button
+          className="load-older-button"
           onClick={() => dispatch(loadOlderMessages(conversationId))}
           disabled={loadingOlderMessages}
-          style={{ marginBottom: 12, borderRadius: 8, padding: "8px 12px" }}
         >
           {loadingOlderMessages ? "Loading..." : "Load older messages"}
         </button>
       ) : null}
-      {error && error !== "Unauthenticated" ? <p style={{ color: "#fca5a5", marginTop: 0 }}>{error}</p> : null}
+      {error && error !== "Unauthenticated" ? <GlassAlert tone="danger">{error}</GlassAlert> : null}
+      <div className="chat-messages-fill">
       <MessageList
         messages={messages}
         currentUserId={currentUser?.userId}
         participants={selectedConversation?.participants}
         loading={initialMessagesLoading || messagesLoading}
+        fullHeight
       />
-      <div style={{ marginTop: 12 }}>
-        <MessageInput onSend={onSend} />
       </div>
+      </div>
+
+      <footer className="chat-detail-composer">
+        <MessageInput onSend={onSend} />
+      </footer>
+      </section>
     </main>
+    <GlassModal open={composeOpen} title="New conversation" onClose={() => setComposeOpen(false)}>
+      <form className="modal-form" onSubmit={createConversation}>
+        <label>
+          Email address
+          <input
+            value={peerEmail}
+            onChange={(event) => setPeerEmail(event.target.value)}
+            placeholder="friend@example.com"
+            type="email"
+            disabled={creatingConversation}
+            autoFocus
+          />
+        </label>
+        <GlassButton type="submit" variant="primary" disabled={creatingConversation || !peerEmail.trim()}>
+          {creatingConversation ? "Starting..." : "Start chat"}
+        </GlassButton>
+      </form>
+    </GlassModal>
+    </AppShell>
   );
 }

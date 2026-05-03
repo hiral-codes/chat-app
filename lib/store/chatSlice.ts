@@ -12,6 +12,8 @@ import { Conversation, Message, User } from "@/lib/types/chat";
 type ChatState = {
   currentUser?: User;
   conversations: Conversation[];
+  archivedConversationIds: string[];
+  unreadCountsByConversationId: Record<string, number>;
   nextConversationToken: string | null;
   selectedConversation?: Conversation;
   messagesByConversationId: Record<string, Message[]>;
@@ -31,6 +33,8 @@ type ChatState = {
 
 const initialState: ChatState = {
   conversations: [],
+  archivedConversationIds: [],
+  unreadCountsByConversationId: {},
   nextConversationToken: null,
   messagesByConversationId: {},
   optimisticMessageIdsByRequestId: {},
@@ -48,6 +52,22 @@ const initialState: ChatState = {
 
 const dedupeConversations = (conversations: Conversation[]) =>
   Array.from(new Map(conversations.map((conversation) => [conversation.conversationId, conversation])).values());
+
+const upsertConversation = (conversations: Conversation[], nextConversation: Conversation, moveToTop = false) => {
+  const existing = conversations.find((conversation) => conversation.conversationId === nextConversation.conversationId);
+  const merged = existing ? { ...existing, ...nextConversation } : nextConversation;
+  const withoutCurrent = conversations.filter((conversation) => conversation.conversationId !== nextConversation.conversationId);
+  if (moveToTop) return [merged, ...withoutCurrent];
+  return existing
+    ? conversations.map((conversation) => (conversation.conversationId === nextConversation.conversationId ? merged : conversation))
+    : [...conversations, merged];
+};
+
+const updateConversationFromMessage = (conversation: Conversation, message: Message) => ({
+  ...conversation,
+  lastMessagePreview: message.content,
+  lastMessageAt: message.createdAt
+});
 
 const dedupeMessages = (messages: Message[]) =>
   Array.from(new Map(messages.map((message) => [message.messageId, message])).values()).sort(
@@ -176,10 +196,29 @@ const chatSlice = createSlice({
     clearChatError(state) {
       state.error = "";
     },
+    archiveConversation(state, action: PayloadAction<string>) {
+      if (!state.archivedConversationIds.includes(action.payload)) {
+        state.archivedConversationIds.push(action.payload);
+      }
+    },
+    unarchiveConversation(state, action: PayloadAction<string>) {
+      state.archivedConversationIds = state.archivedConversationIds.filter((conversationId) => conversationId !== action.payload);
+    },
     messageReceived(state, action: PayloadAction<Message>) {
       const message = { ...action.payload, deliveryStatus: action.payload.deliveryStatus ?? "sent" };
       const existing = state.messagesByConversationId[message.conversationId] ?? [];
       state.messagesByConversationId[message.conversationId] = dedupeMessages([...existing, message]);
+
+      const conversation = state.conversations.find((item) => item.conversationId === message.conversationId);
+      if (conversation) {
+        state.conversations = upsertConversation(state.conversations, updateConversationFromMessage(conversation, message), true);
+      }
+
+      const selected = state.selectedConversation?.conversationId === message.conversationId;
+      const sentByCurrentUser = state.currentUser?.userId === message.senderId;
+      if (!selected && !sentByCurrentUser) {
+        state.unreadCountsByConversationId[message.conversationId] = (state.unreadCountsByConversationId[message.conversationId] ?? 0) + 1;
+      }
     }
   },
   extraReducers: (builder) => {
@@ -234,10 +273,11 @@ const chatSlice = createSlice({
         state.messagesLoading = false;
         state.openingConversationId = undefined;
         state.selectedConversation = action.payload.conversation;
-        state.conversations = dedupeConversations([action.payload.conversation, ...state.conversations]);
+        state.conversations = upsertConversation(state.conversations, action.payload.conversation);
         state.messagesByConversationId[action.payload.conversation.conversationId] = dedupeMessages(action.payload.messages);
         state.messageNextTokens[action.payload.conversation.conversationId] = action.payload.nextToken;
         state.messageThreadsInitialized[action.payload.conversation.conversationId] = true;
+        state.unreadCountsByConversationId[action.payload.conversation.conversationId] = 0;
       })
       .addCase(openConversation.rejected, (state) => {
         state.messagesLoading = false;
@@ -277,15 +317,11 @@ const chatSlice = createSlice({
         state.optimisticMessageIdsByRequestId[action.meta.requestId] = optimisticMessageId;
         state.messagesByConversationId[action.meta.arg.conversationId] = dedupeMessages([...existing, optimisticMessage]);
 
-        state.conversations = state.conversations.map((conversation) =>
-          conversation.conversationId === action.meta.arg.conversationId
-            ? {
-                ...conversation,
-                lastMessagePreview: action.meta.arg.content,
-                lastMessageAt: optimisticMessage.createdAt
-              }
-            : conversation
-        );
+        const conversation = state.conversations.find((item) => item.conversationId === action.meta.arg.conversationId);
+        if (conversation) {
+          state.conversations = upsertConversation(state.conversations, updateConversationFromMessage(conversation, optimisticMessage), true);
+        }
+        state.unreadCountsByConversationId[action.meta.arg.conversationId] = 0;
       })
       .addCase(sendChatMessage.fulfilled, (state, action) => {
         state.sendingMessage = false;
@@ -298,6 +334,10 @@ const chatSlice = createSlice({
           ...existing.filter((item) => item.messageId !== optimisticMessageId),
           message
         ]);
+        const conversation = state.conversations.find((item) => item.conversationId === message.conversationId);
+        if (conversation) {
+          state.conversations = upsertConversation(state.conversations, updateConversationFromMessage(conversation, message), true);
+        }
       })
       .addCase(sendChatMessage.rejected, (state, action) => {
         state.sendingMessage = false;
@@ -316,5 +356,5 @@ const chatSlice = createSlice({
   }
 });
 
-export const { clearChatError, messageReceived } = chatSlice.actions;
+export const { archiveConversation, clearChatError, messageReceived, unarchiveConversation } = chatSlice.actions;
 export default chatSlice.reducer;
