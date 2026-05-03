@@ -1,111 +1,95 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { fetchAuthSession, getCurrentUser, signOut } from "aws-amplify/auth";
+import { FormEvent, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { signOut } from "aws-amplify/auth";
 import { ConversationList } from "@/components/chat/ConversationList";
-import { listConversations, startConversation } from "@/lib/chat/api";
-import { Conversation } from "@/lib/types/chat";
 import { ensureAmplifyConfigured } from "@/lib/aws/amplify-config";
+import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
+import { createConversationByEmail, initializeChat, loadMoreConversations } from "@/lib/store/chatSlice";
 
 ensureAmplifyConfigured();
 
-const dedupeConversations = (conversations: Conversation[]) =>
-  Array.from(new Map(conversations.map((conversation) => [conversation.conversationId, conversation])).values());
-
 export default function ChatInboxPage() {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [nextToken, setNextToken] = useState<string | null>(null);
-  const [peerUserId, setPeerUserId] = useState("");
-  const [userId, setUserId] = useState<string>("");
-  const [error, setError] = useState<string>("");
+  const dispatch = useAppDispatch();
+  const router = useRouter();
+  const [peerEmail, setPeerEmail] = useState("");
+  const {
+    conversations,
+    currentUser,
+    nextConversationToken,
+    conversationsLoading,
+    creatingConversation,
+    loadingMoreConversations,
+    error
+  } = useAppSelector((state) => state.chat);
 
   useEffect(() => {
-    const run = async () => {
-      try {
-        const session = await fetchAuthSession();
-        if (!session.tokens) {
-          window.location.href = "/login";
-          return;
-        }
+    dispatch(initializeChat())
+      .unwrap()
+      .catch((reason) => {
+        if (reason?.message === "Unauthenticated") window.location.href = "/login";
+      });
+  }, [dispatch]);
 
-        const user = await getCurrentUser();
-        setUserId(user.userId);
-      } catch {
-        window.location.href = "/login";
-        return;
-      }
+  const createConversation = async (event: FormEvent) => {
+    event.preventDefault();
+    const email = peerEmail.trim();
+    if (!email || creatingConversation) return;
 
-      try {
-        const data = await listConversations();
-        setConversations(dedupeConversations(data.items));
-        setNextToken(data.nextToken ?? null);
-      } catch (apiError) {
-        console.error("Failed to load conversations", apiError);
-        setError("You are signed in, but conversations could not be loaded. Check the AppSync/API configuration.");
-      }
-    };
-    run();
-  }, []);
-
-  const loadMore = async () => {
-    if (!nextToken) return;
     try {
-      const data = await listConversations(20, nextToken);
-      setConversations((prev) => dedupeConversations([...prev, ...data.items]));
-      setNextToken(data.nextToken ?? null);
-    } catch (apiError) {
-      console.error("Failed to load more conversations", apiError);
-      setError("Could not load more conversations.");
-    }
-  };
-
-  const createConversation = async () => {
-    if (!peerUserId.trim()) return;
-    try {
-      const conversation = await startConversation(peerUserId.trim());
-      setConversations((prev) => dedupeConversations([conversation, ...prev]));
-      setPeerUserId("");
-      setError("");
-    } catch (apiError) {
-      console.error("Failed to start conversation", apiError);
-      setError("Could not start that conversation.");
+      const conversation = await dispatch(createConversationByEmail(email)).unwrap();
+      setPeerEmail("");
+      router.push(`/chat/${conversation.conversationId}`);
+    } catch {
+      return;
     }
   };
 
   return (
     <main style={{ maxWidth: 880, margin: "40px auto", padding: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
-        <h1 style={{ margin: 0 }}>Chats</h1>
-        <button onClick={() => signOut()} style={{ border: "1px solid #334155", background: "transparent", color: "#e2e8f0", borderRadius: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, gap: 12 }}>
+        <div>
+          <h1 style={{ margin: 0 }}>Chats</h1>
+          {currentUser ? <p style={{ color: "#94a3b8", margin: "6px 0 0" }}>Signed in as {currentUser.displayName}</p> : null}
+        </div>
+        <button onClick={() => signOut()} style={{ border: "1px solid #334155", background: "transparent", color: "#e2e8f0", borderRadius: 8, padding: "9px 12px" }}>
           Logout
         </button>
       </div>
 
-      <div style={{ marginBottom: 16, display: "flex", gap: 8 }}>
+      <form onSubmit={createConversation} style={{ marginBottom: 16, display: "flex", gap: 8 }}>
         <input
-          value={peerUserId}
-          onChange={(e) => setPeerUserId(e.target.value)}
-          placeholder="Enter other user id to start 1:1 chat"
+          value={peerEmail}
+          onChange={(event) => setPeerEmail(event.target.value)}
+          placeholder="Enter email address to start a chat"
+          type="email"
+          disabled={creatingConversation}
           style={{ flex: 1, padding: 12, borderRadius: 8, border: "1px solid #334155", background: "#0b1220", color: "#e2e8f0" }}
         />
-        <button onClick={createConversation} style={{ padding: "0 12px", border: 0, borderRadius: 8, background: "#2563eb", color: "white" }}>
-          Start
+        <button
+          type="submit"
+          disabled={creatingConversation}
+          style={{ padding: "0 14px", border: 0, borderRadius: 8, background: "#2563eb", color: "white", minWidth: 96 }}
+        >
+          {creatingConversation ? "Starting..." : "Start"}
         </button>
-      </div>
+      </form>
 
-      {error ? <p style={{ color: "#fca5a5", marginTop: 0 }}>{error}</p> : null}
+      {error && error !== "Unauthenticated" ? <p style={{ color: "#fca5a5", marginTop: 0 }}>{error}</p> : null}
 
-      <ConversationList conversations={conversations} />
-      {nextToken ? (
-        <button onClick={loadMore} style={{ marginTop: 12, width: "100%", padding: 10, borderRadius: 8 }}>
-          Load More
+      <ConversationList conversations={conversations} currentUserId={currentUser?.userId} loading={conversationsLoading} />
+      {nextConversationToken ? (
+        <button
+          onClick={() => dispatch(loadMoreConversations())}
+          disabled={loadingMoreConversations}
+          style={{ marginTop: 12, width: "100%", padding: 10, borderRadius: 8 }}
+        >
+          {loadingMoreConversations ? "Loading..." : "Load More"}
         </button>
       ) : null}
 
-      <p style={{ color: "#64748b", marginTop: 20 }}>
-        Signed in as <code>{userId}</code>. Open a thread to send messages.
-      </p>
       <Link href="/chat" />
     </main>
   );

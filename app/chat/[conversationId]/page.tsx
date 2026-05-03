@@ -2,30 +2,47 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { fetchAuthSession, getCurrentUser } from "aws-amplify/auth";
+import { useEffect, useMemo } from "react";
+import { fetchAuthSession } from "aws-amplify/auth";
 import { MessageInput } from "@/components/chat/MessageInput";
 import { MessageList } from "@/components/chat/MessageList";
-import { listMessages, sendMessage, subscribeToMessages } from "@/lib/chat/api";
-import { Message } from "@/lib/types/chat";
 import { ensureAmplifyConfigured } from "@/lib/aws/amplify-config";
+import { subscribeToMessages } from "@/lib/chat/api";
+import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
+import {
+  initializeChat,
+  loadOlderMessages,
+  messageReceived,
+  openConversation,
+  sendChatMessage
+} from "@/lib/store/chatSlice";
 
 ensureAmplifyConfigured();
-
-const dedupeMessages = (messages: Message[]) => Array.from(new Map(messages.map((message) => [message.messageId, message])).values());
 
 export default function ConversationPage() {
   const params = useParams<{ conversationId: string }>();
   const conversationId = useMemo(() => params.conversationId, [params.conversationId]);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [nextToken, setNextToken] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string>();
-  const [error, setError] = useState<string>("");
+  const dispatch = useAppDispatch();
+  const {
+    currentUser,
+    selectedConversation,
+    messagesByConversationId,
+    messageNextTokens,
+    messagesLoading,
+    loadingOlderMessages,
+    sendingMessage,
+    error
+  } = useAppSelector((state) => state.chat);
+
+  const messages = messagesByConversationId[conversationId] ?? [];
+  const nextToken = messageNextTokens[conversationId];
+  const chatPartnerNames = selectedConversation?.participants
+    .filter((participant) => participant.userId !== currentUser?.userId)
+    .map((participant) => participant.displayName)
+    .join(", ");
+  const title = chatPartnerNames || selectedConversation?.participants.map((participant) => participant.displayName).join(", ") || "Chat";
 
   useEffect(() => {
-    let cancelled = false;
-    let unsubscribe: (() => void) | undefined;
-
     const run = async () => {
       try {
         const session = await fetchAuthSession();
@@ -34,77 +51,62 @@ export default function ConversationPage() {
           return;
         }
 
-        const user = await getCurrentUser();
-        if (cancelled) return;
-        setUserId(user.userId);
+        await dispatch(initializeChat()).unwrap();
+        await dispatch(openConversation(conversationId)).unwrap();
       } catch {
-        window.location.href = "/login";
         return;
-      }
-
-      try {
-        const data = await listMessages(conversationId);
-        if (cancelled) return;
-        setMessages(dedupeMessages(data.items.reverse()));
-        setNextToken(data.nextToken ?? null);
-
-        unsubscribe = subscribeToMessages(conversationId, (incoming) => {
-          setMessages((prev) => dedupeMessages([...prev, incoming]));
-        });
-        if (cancelled) unsubscribe();
-      } catch (apiError) {
-        console.error("Failed to load messages", apiError);
-        if (cancelled) return;
-        setError("You are signed in, but this conversation could not be loaded.");
       }
     };
 
     run();
+  }, [conversationId, dispatch]);
 
-    return () => {
-      cancelled = true;
-      unsubscribe?.();
-    };
-  }, [conversationId]);
+  useEffect(() => {
+    const unsubscribe = subscribeToMessages(conversationId, (message) => {
+      dispatch(messageReceived(message));
+    });
+
+    return unsubscribe;
+  }, [conversationId, dispatch]);
 
   const onSend = async (content: string) => {
     try {
-      const sent = await sendMessage(conversationId, content);
-      setMessages((prev) => dedupeMessages([...prev, sent]));
-      setError("");
-    } catch (apiError) {
-      console.error("Failed to send message", apiError);
-      setError("Could not send that message.");
-    }
-  };
-
-  const loadOlder = async () => {
-    if (!nextToken) return;
-    try {
-      const data = await listMessages(conversationId, 30, nextToken);
-      setMessages((prev) => dedupeMessages([...data.items.reverse(), ...prev]));
-      setNextToken(data.nextToken ?? null);
-    } catch (apiError) {
-      console.error("Failed to load older messages", apiError);
-      setError("Could not load older messages.");
+      await dispatch(sendChatMessage({ conversationId, content })).unwrap();
+    } catch {
+      return;
     }
   };
 
   return (
     <main style={{ maxWidth: 900, margin: "30px auto", padding: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
-        <Link href="/chat">Back to chats</Link>
-        <span style={{ color: "#94a3b8" }}>Conversation: {conversationId}</span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 12 }}>
+        <Link href="/chat" style={{ color: "#bfdbfe" }}>
+          Back to chats
+        </Link>
+        <div style={{ textAlign: "right", minWidth: 0 }}>
+          <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+          <div style={{ color: "#94a3b8", fontSize: 13 }}>Conversation</div>
+        </div>
       </div>
+
       {nextToken ? (
-        <button onClick={loadOlder} style={{ marginBottom: 12 }}>
-          Load older messages
+        <button
+          onClick={() => dispatch(loadOlderMessages(conversationId))}
+          disabled={loadingOlderMessages}
+          style={{ marginBottom: 12, borderRadius: 8, padding: "8px 12px" }}
+        >
+          {loadingOlderMessages ? "Loading..." : "Load older messages"}
         </button>
       ) : null}
-      {error ? <p style={{ color: "#fca5a5", marginTop: 0 }}>{error}</p> : null}
-      <MessageList messages={messages} currentUserId={userId} />
+      {error && error !== "Unauthenticated" ? <p style={{ color: "#fca5a5", marginTop: 0 }}>{error}</p> : null}
+      <MessageList
+        messages={messages}
+        currentUserId={currentUser?.userId}
+        participants={selectedConversation?.participants}
+        loading={messagesLoading}
+      />
       <div style={{ marginTop: 12 }}>
-        <MessageInput onSend={onSend} />
+        <MessageInput onSend={onSend} sending={sendingMessage} />
       </div>
     </main>
   );

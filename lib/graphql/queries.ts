@@ -30,3 +30,18 @@ export const listMessagesQuery = /* GraphQL */ `
     }
   }
 `;
+
+export const getConversationQuery = /* GraphQL */ `
+  query GetConversation($conversationId: ID!) {
+    getConversation(conversationId: $conversationId) {
+      conversationId
+      lastMessagePreview
+      lastMessageAt
+      participants {
+        userId
+        displayName
+        avatarUrl
+      }
+    }
+  }
+`;

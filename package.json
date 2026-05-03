@@ -11,13 +11,16 @@
     "cdk:synth": "cdk synth -a \"tsx infra/bin/chat-app.ts\""
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.1041.0",
     "@aws-sdk/client-dynamodb": "^3.1038.0",
     "@aws-sdk/util-dynamodb": "^3.996.2",
+    "@reduxjs/toolkit": "^2.11.2",
     "aws-amplify": "^6.16.4",
     "graphql": "^16.13.2",
     "next": "^16.2.4",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "react-redux": "^9.2.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

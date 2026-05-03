@@ -7,6 +7,8 @@ Next.js + AWS AppSync + Cognito + DynamoDB single-table implementation for a 1:1
 - Single-table DynamoDB model (`ChatTable`)
 - AppSync GraphQL queries, mutations, and subscriptions
 - 1:1 conversation creation and realtime message updates
+- Start chats by Cognito user email and display participant names
+- Redux Toolkit global chat state for conversations, messages, and loading states
 - Conversation/message pagination with `nextToken`
 
 ## Local Setup
@@ -30,9 +32,10 @@ To synth stack:
 ## GraphQL Contract
 - Queries:
   - `listConversations(limit, nextToken)`
+  - `getConversation(conversationId)`
   - `listMessages(conversationId, limit, nextToken)`
 - Mutations:
-  - `startConversation(otherUserId)`
+  - `startConversation(otherUserId)` where the value is the other user's email address
   - `sendMessage(conversationId, content)`
 - Subscription:
   - `onMessageSent(conversationId)`

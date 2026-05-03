@@ -4,23 +4,18 @@ import { FormEvent, useState } from "react";
 
 type Props = {
   onSend: (content: string) => Promise<void>;
+  sending?: boolean;
 };
 
-export function MessageInput({ onSend }: Props) {
+export function MessageInput({ onSend, sending = false }: Props) {
   const [value, setValue] = useState("");
-  const [sending, setSending] = useState(false);
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const trimmed = value.trim();
     if (!trimmed || sending) return;
-    setSending(true);
-    try {
-      await onSend(trimmed);
-      setValue("");
-    } finally {
-      setSending(false);
-    }
+    await onSend(trimmed);
+    setValue("");
   };
 
   return (
@@ -29,6 +24,7 @@ export function MessageInput({ onSend }: Props) {
         value={value}
         onChange={(event) => setValue(event.target.value)}
         placeholder="Type a message"
+        disabled={sending}
         style={{
           flex: 1,
           padding: 12,
@@ -43,7 +39,7 @@ export function MessageInput({ onSend }: Props) {
         disabled={sending}
         style={{ padding: "0 16px", borderRadius: 8, border: 0, background: "#2563eb", color: "white" }}
       >
-        Send
+        {sending ? "Sending..." : "Send"}
       </button>
     </form>
   );

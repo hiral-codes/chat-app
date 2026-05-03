@@ -3,11 +3,14 @@ import {
   QueryCommand,
   TransactWriteItemsCommand
 } from "@aws-sdk/client-dynamodb";
+import { CognitoIdentityProviderClient, ListUsersCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 import crypto from "node:crypto";
 
 const client = new DynamoDBClient({});
+const cognito = new CognitoIdentityProviderClient({});
 const tableName = process.env.CHAT_TABLE_NAME ?? "";
+const userPoolId = process.env.USER_POOL_ID ?? "";
 
 type AppSyncEvent = {
   fieldName?: string;
@@ -37,15 +40,74 @@ const toStringArray = (value: unknown): string[] => {
   return [];
 };
 
-const toUser = (id: string) => ({ userId: id, displayName: id, avatarUrl: null });
-const toConversation = (item: Record<string, unknown>) => ({
-  conversationId: String(item.conversationId),
-  participants: toStringArray(item.participantIds).map(toUser),
-  lastMessagePreview: item.lastMessagePreview ?? null,
-  lastMessageAt: item.lastMessageAt ?? null
-});
+const attribute = (attributes: { Name?: string; Value?: string }[] | undefined, name: string) =>
+  attributes?.find((item) => item.Name === name)?.Value;
 
-async function startConversation(currentUserId: string, otherUserId: string) {
+const displayNameFromAttributes = (attributes: { Name?: string; Value?: string }[], fallback: string) =>
+  attribute(attributes, "name") ||
+  [attribute(attributes, "given_name"), attribute(attributes, "family_name")].filter(Boolean).join(" ").trim() ||
+  attribute(attributes, "email") ||
+  fallback;
+
+const toUser = (id: string, displayName = id) => ({ userId: id, displayName, avatarUrl: null });
+
+async function getUserProfile(userId: string) {
+  if (!userPoolId) return toUser(userId);
+
+  try {
+    const result = await cognito.send(
+      new ListUsersCommand({
+        UserPoolId: userPoolId,
+        Filter: `sub = "${userId}"`,
+        Limit: 1
+      })
+    );
+    const user = result.Users?.[0];
+    return toUser(userId, displayNameFromAttributes(user?.Attributes ?? [], userId));
+  } catch (error) {
+    console.warn("Unable to load user profile", { userId, error });
+    return toUser(userId);
+  }
+}
+
+async function findUserByEmail(email: string) {
+  const trimmedEmail = email.trim();
+  if (!trimmedEmail) throw new Error("Email is required");
+  if (!userPoolId) throw new Error("User pool is not configured");
+
+  const escapedEmail = trimmedEmail.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+  const result = await cognito.send(
+    new ListUsersCommand({
+      UserPoolId: userPoolId,
+      Filter: `email = "${escapedEmail}"`,
+      Limit: 1
+    })
+  );
+
+  const user = result.Users?.[0];
+  const userId = attribute(user?.Attributes, "sub");
+  if (!user || !userId) throw new Error("No user exists with that email address");
+
+  return toUser(userId, displayNameFromAttributes(user.Attributes ?? [], trimmedEmail));
+}
+
+async function toConversation(item: Record<string, unknown>) {
+  const participantIds = toStringArray(item.participantIds);
+  const participants = await Promise.all(participantIds.map(getUserProfile));
+
+  return {
+    conversationId: String(item.conversationId),
+    participants,
+    lastMessagePreview: item.lastMessagePreview ?? null,
+    lastMessageAt: item.lastMessageAt ?? null
+  };
+}
+
+async function startConversation(currentUserId: string, otherUserEmail: string) {
+  const otherUser = await findUserByEmail(otherUserEmail);
+  const otherUserId = otherUser.userId;
+  if (currentUserId === otherUserId) throw new Error("You cannot start a conversation with yourself");
+
   const participantsHash = participantHash(currentUserId, otherUserId);
   const existing = await client.send(
     new QueryCommand({
@@ -117,7 +179,7 @@ async function startConversation(currentUserId: string, otherUserId: string) {
 
   return {
     conversationId,
-    participants: conversation.participantIds.map(toUser),
+    participants: await Promise.all(conversation.participantIds.map(getUserProfile)),
     lastMessagePreview: null,
     lastMessageAt: createdAt
   };
@@ -140,9 +202,30 @@ async function listConversations(currentUserId: string, limit = 20, nextToken?: 
 
   const items = (result.Items ?? []).map((i) => unmarshall(i));
   return {
-    items: items.map(toConversation),
+    items: await Promise.all(items.map(toConversation)),
     nextToken: encodeToken(result.LastEvaluatedKey)
   };
+}
+
+async function getConversation(currentUserId: string, conversationId: string) {
+  const result = await client.send(
+    new QueryCommand({
+      TableName: tableName,
+      KeyConditionExpression: "PK = :pk AND SK = :sk",
+      ExpressionAttributeValues: {
+        ":pk": { S: convKey(conversationId) },
+        ":sk": { S: "META" }
+      },
+      Limit: 1
+    })
+  );
+
+  const item = result.Items?.[0];
+  if (!item) throw new Error("Conversation not found");
+  const conversation = unmarshall(item);
+  const participants = toStringArray(conversation.participantIds);
+  if (!participants.includes(currentUserId)) throw new Error("Forbidden");
+  return toConversation(conversation);
 }
 
 async function listMessages(currentUserId: string, conversationId: string, limit = 30, nextToken?: string) {
@@ -272,13 +355,15 @@ export const handler = async (event: AppSyncEvent) => {
 
   switch (fieldName) {
     case "startConversation":
-      return startConversation(userId, String(event.arguments.otherUserId));
+      return startConversation(userId, String(event.arguments.otherUserEmail ?? event.arguments.otherUserId));
     case "listConversations":
       return listConversations(
         userId,
         Number(event.arguments.limit ?? 20),
         event.arguments.nextToken ? String(event.arguments.nextToken) : undefined
       );
+    case "getConversation":
+      return getConversation(userId, String(event.arguments.conversationId));
     case "listMessages":
       return listMessages(
         userId,

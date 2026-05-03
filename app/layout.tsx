@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AuthBootstrap } from "@/components/AuthBootstrap";
+import { StoreProvider } from "@/components/StoreProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -11,8 +12,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <AuthBootstrap />
-        {children}
+        <StoreProvider>
+          <AuthBootstrap />
+          {children}
+        </StoreProvider>
       </body>
     </html>
   );

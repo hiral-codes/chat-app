@@ -75,7 +75,8 @@ export class ChatInfraStack extends cdk.Stack {
       entry: path.join(__dirname, "..", "lambda", "chat-resolver.ts"),
       handler: "handler",
       environment: {
-        CHAT_TABLE_NAME: chatTable.tableName
+        CHAT_TABLE_NAME: chatTable.tableName,
+        USER_POOL_ID: userPool.userPoolId
       }
     });
 
@@ -86,10 +87,17 @@ export class ChatInfraStack extends cdk.Stack {
         resources: [chatTable.tableArn]
       })
     );
+    resolverFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cognito-idp:ListUsers"],
+        resources: [userPool.userPoolArn]
+      })
+    );
 
     const lambdaDs = api.addLambdaDataSource("ChatLambdaDataSource", resolverFn);
     const fields = [
       "listConversations",
+      "getConversation",
       "listMessages",
       "startConversation",
       "sendMessage",
@@ -97,8 +105,9 @@ export class ChatInfraStack extends cdk.Stack {
     ];
 
     fields.forEach((fieldName) => {
+      const queryFields = ["listConversations", "getConversation", "listMessages"];
       lambdaDs.createResolver(`Resolver${fieldName}`, {
-        typeName: fieldName === "onMessageSent" ? "Subscription" : fieldName === "listConversations" || fieldName === "listMessages" ? "Query" : "Mutation",
+        typeName: fieldName === "onMessageSent" ? "Subscription" : queryFields.includes(fieldName) ? "Query" : "Mutation",
         fieldName
       });
     });
