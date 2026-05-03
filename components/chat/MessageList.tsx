@@ -1,5 +1,6 @@
 "use client";
 
+import { Avatar } from "@/components/chat/Avatar";
 import { Message, User } from "@/lib/types/chat";
 
 type Props = {
@@ -10,7 +11,7 @@ type Props = {
 };
 
 export function MessageList({ messages, currentUserId, participants = [], loading = false }: Props) {
-  const participantNames = new Map(participants.map((participant) => [participant.userId, participant.displayName]));
+  const participantById = new Map(participants.map((participant) => [participant.userId, participant]));
 
   if (loading) {
     return (
@@ -36,22 +37,34 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
       {!messages.length ? <p style={{ color: "#94a3b8", textAlign: "center" }}>No messages yet.</p> : null}
       {messages.map((message) => {
         const mine = currentUserId === message.senderId;
-        const senderName = mine ? "You" : participantNames.get(message.senderId) ?? "Chat partner";
+        const sender = participantById.get(message.senderId);
+        const senderName = mine ? "You" : sender?.displayName ?? "Chat partner";
+
         return (
           <div
             key={message.messageId}
             style={{
-              marginLeft: mine ? "auto" : 0,
-              maxWidth: "75%",
-              background: mine ? "#1d4ed8" : "#1f2937",
-              padding: "10px 12px",
-              borderRadius: 8,
-              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.16)"
+              display: "flex",
+              alignItems: "flex-end",
+              gap: 8,
+              justifyContent: mine ? "flex-end" : "flex-start"
             }}
           >
-            <div style={{ fontSize: 12, color: mine ? "#bfdbfe" : "#94a3b8", marginBottom: 4 }}>{senderName}</div>
-            <div>{message.content}</div>
-            <div style={{ fontSize: 12, color: "#cbd5e1", marginTop: 4 }}>{new Date(message.createdAt).toLocaleTimeString()}</div>
+            {!mine ? <Avatar user={sender} label={senderName} size={32} /> : null}
+            <div
+              style={{
+                maxWidth: "75%",
+                background: mine ? "#1d4ed8" : "#1f2937",
+                padding: "10px 12px",
+                borderRadius: 8,
+                boxShadow: "0 10px 30px rgba(0, 0, 0, 0.16)"
+              }}
+            >
+              <div style={{ fontSize: 12, color: mine ? "#bfdbfe" : "#94a3b8", marginBottom: 4 }}>{senderName}</div>
+              <div>{message.content}</div>
+              <div style={{ fontSize: 12, color: "#cbd5e1", marginTop: 4 }}>{new Date(message.createdAt).toLocaleTimeString()}</div>
+            </div>
+            {mine ? <Avatar user={sender} label="You" size={32} /> : null}
           </div>
         );
       })}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut } from "aws-amplify/auth";
+import { Avatar } from "@/components/chat/Avatar";
 import { ConversationList } from "@/components/chat/ConversationList";
 import { ensureAmplifyConfigured } from "@/lib/aws/amplify-config";
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
@@ -50,9 +51,12 @@ export default function ChatInboxPage() {
   return (
     <main style={{ maxWidth: 880, margin: "40px auto", padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, gap: 12 }}>
-        <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          {currentUser ? <Avatar user={currentUser} size={44} /> : null}
+          <div style={{ minWidth: 0 }}>
           <h1 style={{ margin: 0 }}>Chats</h1>
           {currentUser ? <p style={{ color: "#94a3b8", margin: "6px 0 0" }}>Signed in as {currentUser.displayName}</p> : null}
+          </div>
         </div>
         <button onClick={() => signOut()} style={{ border: "1px solid #334155", background: "transparent", color: "#e2e8f0", borderRadius: 8, padding: "9px 12px" }}>
           Logout

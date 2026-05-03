@@ -54,7 +54,7 @@ const displayNameFromAttributes = (attributes: { Name?: string; Value?: string }
   attribute(attributes, "email") ||
   fallback;
 
-const toUser = (id: string, displayName = id) => ({ userId: id, displayName, avatarUrl: null });
+const toUser = (id: string, displayName = id, avatarUrl: string | null = null) => ({ userId: id, displayName, avatarUrl });
 type UserProfile = ReturnType<typeof toUser>;
 type LoadUserProfile = (userId: string) => Promise<UserProfile>;
 
@@ -83,7 +83,8 @@ async function getUserProfile(userId: string) {
       })
     );
     const user = result.Users?.[0];
-    return toUser(userId, displayNameFromAttributes(user?.Attributes ?? [], userId));
+    const attributes = user?.Attributes ?? [];
+    return toUser(userId, displayNameFromAttributes(attributes, userId), attribute(attributes, "picture") ?? null);
   } catch (error) {
     console.warn("Unable to load user profile", { userId, error });
     return toUser(userId);
@@ -108,7 +109,8 @@ async function findUserByEmail(email: string) {
   const userId = attribute(user?.Attributes, "sub");
   if (!user || !userId) throw new Error("No user exists with that email address");
 
-  return toUser(userId, displayNameFromAttributes(user.Attributes ?? [], trimmedEmail));
+  const attributes = user.Attributes ?? [];
+  return toUser(userId, displayNameFromAttributes(attributes, trimmedEmail), attribute(attributes, "picture") ?? null);
 }
 
 async function toConversation(item: Record<string, unknown>, loadUserProfile: LoadUserProfile = getUserProfile) {

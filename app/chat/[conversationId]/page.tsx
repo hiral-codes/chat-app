@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { fetchAuthSession } from "aws-amplify/auth";
+import { Avatar } from "@/components/chat/Avatar";
 import { MessageInput } from "@/components/chat/MessageInput";
 import { MessageList } from "@/components/chat/MessageList";
 import { ensureAmplifyConfigured } from "@/lib/aws/amplify-config";
@@ -37,11 +38,13 @@ export default function ConversationPage() {
 
   const messages = messagesByConversationId[conversationId] ?? [];
   const nextToken = messageNextTokens[conversationId];
-  const chatPartnerNames = selectedConversation?.participants
-    .filter((participant) => participant.userId !== currentUser?.userId)
+  const visibleParticipants = selectedConversation?.participants.filter((participant) => participant.userId !== currentUser?.userId) ?? [];
+  const titleParticipants = visibleParticipants.length ? visibleParticipants : selectedConversation?.participants ?? [];
+  const chatPartnerNames = visibleParticipants
     .map((participant) => participant.displayName)
     .join(", ");
   const title = chatPartnerNames || selectedConversation?.participants.map((participant) => participant.displayName).join(", ") || "Chat";
+  const avatarUser = titleParticipants[0];
 
   useEffect(() => {
     let cancelled = false;
@@ -94,9 +97,12 @@ export default function ConversationPage() {
         <Link href="/chat" style={{ color: "#bfdbfe" }}>
           Back to chats
         </Link>
-        <div style={{ textAlign: "right", minWidth: 0 }}>
-          <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-          <div style={{ color: "#94a3b8", fontSize: 13 }}>Conversation</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <div style={{ textAlign: "right", minWidth: 0 }}>
+            <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+            <div style={{ color: "#94a3b8", fontSize: 13 }}>Conversation</div>
+          </div>
+          <Avatar user={avatarUser} label={title} />
         </div>
       </div>
 
