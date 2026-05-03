@@ -17,6 +17,8 @@ export type Message = {
   senderId: string;
   content: string;
   createdAt: string;
+  deliveryStatus?: "sending" | "sent" | "failed";
+  clientRequestId?: string;
 };
 
 export type Paginated<T> = {

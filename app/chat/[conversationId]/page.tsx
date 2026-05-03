@@ -32,7 +32,6 @@ export default function ConversationPage() {
     messageNextTokens,
     messagesLoading,
     loadingOlderMessages,
-    sendingMessage,
     error
   } = useAppSelector((state) => state.chat);
 
@@ -123,7 +122,7 @@ export default function ConversationPage() {
         loading={initialMessagesLoading || messagesLoading}
       />
       <div style={{ marginTop: 12 }}>
-        <MessageInput onSend={onSend} sending={sendingMessage} />
+        <MessageInput onSend={onSend} />
       </div>
     </main>
   );

@@ -15,6 +15,7 @@ type ChatState = {
   nextConversationToken: string | null;
   selectedConversation?: Conversation;
   messagesByConversationId: Record<string, Message[]>;
+  optimisticMessageIdsByRequestId: Record<string, string>;
   messageNextTokens: Record<string, string | null>;
   messageThreadsInitialized: Record<string, boolean>;
   openingConversationId?: string;
@@ -32,6 +33,7 @@ const initialState: ChatState = {
   conversations: [],
   nextConversationToken: null,
   messagesByConversationId: {},
+  optimisticMessageIdsByRequestId: {},
   messageNextTokens: {},
   messageThreadsInitialized: {},
   conversationsInitialized: false,
@@ -175,7 +177,7 @@ const chatSlice = createSlice({
       state.error = "";
     },
     messageReceived(state, action: PayloadAction<Message>) {
-      const message = action.payload;
+      const message = { ...action.payload, deliveryStatus: action.payload.deliveryStatus ?? "sent" };
       const existing = state.messagesByConversationId[message.conversationId] ?? [];
       state.messagesByConversationId[message.conversationId] = dedupeMessages([...existing, message]);
     }
@@ -256,18 +258,59 @@ const chatSlice = createSlice({
         state.loadingOlderMessages = false;
         state.error = "Could not load older messages.";
       })
-      .addCase(sendChatMessage.pending, (state) => {
+      .addCase(sendChatMessage.pending, (state, action) => {
         state.sendingMessage = true;
         state.error = "";
+        if (!state.currentUser) return;
+
+        const optimisticMessageId = `optimistic-${action.meta.requestId}`;
+        const optimisticMessage: Message = {
+          messageId: optimisticMessageId,
+          clientRequestId: action.meta.requestId,
+          conversationId: action.meta.arg.conversationId,
+          senderId: state.currentUser.userId,
+          content: action.meta.arg.content,
+          createdAt: new Date().toISOString(),
+          deliveryStatus: "sending"
+        };
+        const existing = state.messagesByConversationId[action.meta.arg.conversationId] ?? [];
+        state.optimisticMessageIdsByRequestId[action.meta.requestId] = optimisticMessageId;
+        state.messagesByConversationId[action.meta.arg.conversationId] = dedupeMessages([...existing, optimisticMessage]);
+
+        state.conversations = state.conversations.map((conversation) =>
+          conversation.conversationId === action.meta.arg.conversationId
+            ? {
+                ...conversation,
+                lastMessagePreview: action.meta.arg.content,
+                lastMessageAt: optimisticMessage.createdAt
+              }
+            : conversation
+        );
       })
       .addCase(sendChatMessage.fulfilled, (state, action) => {
         state.sendingMessage = false;
-        const message = action.payload;
+        const optimisticMessageId = state.optimisticMessageIdsByRequestId[action.meta.requestId];
+        delete state.optimisticMessageIdsByRequestId[action.meta.requestId];
+
+        const message = { ...action.payload, deliveryStatus: "sent" as const };
         const existing = state.messagesByConversationId[message.conversationId] ?? [];
-        state.messagesByConversationId[message.conversationId] = dedupeMessages([...existing, message]);
+        state.messagesByConversationId[message.conversationId] = dedupeMessages([
+          ...existing.filter((item) => item.messageId !== optimisticMessageId),
+          message
+        ]);
       })
-      .addCase(sendChatMessage.rejected, (state) => {
+      .addCase(sendChatMessage.rejected, (state, action) => {
         state.sendingMessage = false;
+        const optimisticMessageId = state.optimisticMessageIdsByRequestId[action.meta.requestId];
+        delete state.optimisticMessageIdsByRequestId[action.meta.requestId];
+
+        if (optimisticMessageId) {
+          const conversationId = action.meta.arg.conversationId;
+          const existing = state.messagesByConversationId[conversationId] ?? [];
+          state.messagesByConversationId[conversationId] = existing.map((message) =>
+            message.messageId === optimisticMessageId ? { ...message, deliveryStatus: "failed" } : message
+          );
+        }
         state.error = "Could not send that message.";
       });
   }
