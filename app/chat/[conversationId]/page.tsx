@@ -11,7 +11,6 @@ import { MessageList } from "@/components/chat/MessageList";
 import { AppShell } from "@/components/layout/AppShell";
 import { GlassAlert, GlassButton, GlassModal } from "@/components/ui/Glass";
 import { ensureAmplifyConfigured } from "@/lib/aws/amplify-config";
-import { subscribeToMessages } from "@/lib/chat/api";
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
 import {
   archiveConversation,
@@ -19,7 +18,7 @@ import {
   initializeChat,
   loadMoreConversations,
   loadOlderMessages,
-  messageReceived,
+  markConversationSeen,
   openConversation,
   sendChatMessage
 } from "@/lib/store/chatSlice";
@@ -48,6 +47,7 @@ export default function ConversationPage() {
     loadingMoreConversations,
     messagesLoading,
     loadingOlderMessages,
+    seenMessageIdsByConversationId,
     error
   } = useAppSelector((state) => state.chat);
 
@@ -92,12 +92,8 @@ export default function ConversationPage() {
   }, [conversationId, dispatch]);
 
   useEffect(() => {
-    const unsubscribe = subscribeToMessages(conversationId, (message) => {
-      dispatch(messageReceived(message));
-    });
-
-    return unsubscribe;
-  }, [conversationId, dispatch]);
+    dispatch(markConversationSeen(conversationId));
+  }, [conversationId, dispatch, messages.length]);
 
   const onSend = async (content: string) => {
     try {
@@ -171,6 +167,7 @@ export default function ConversationPage() {
         currentUserId={currentUser?.userId}
         participants={selectedConversation?.participants}
         loading={initialMessagesLoading || messagesLoading}
+        seenMessageIds={seenMessageIdsByConversationId[conversationId] ?? []}
         fullHeight
       />
       </div>

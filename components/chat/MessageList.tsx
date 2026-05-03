@@ -10,6 +10,7 @@ type Props = {
   participants?: User[];
   loading?: boolean;
   fullHeight?: boolean;
+  seenMessageIds?: string[];
 };
 
 const bottomThreshold = 96;
@@ -20,7 +21,15 @@ const ticksFor = (message: Message) => {
   return "✓✓";
 };
 
-export function MessageList({ messages, currentUserId, participants = [], loading = false, fullHeight = false }: Props) {
+function SeenIcon() {
+  return (
+    <svg className="message-seen-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 5.25c5.27 0 8.32 4.48 9.23 6.05.25.43.25.97 0 1.4-.91 1.57-3.96 6.05-9.23 6.05S3.68 14.27 2.77 12.7a1.39 1.39 0 0 1 0-1.4C3.68 9.73 6.73 5.25 12 5.25Zm0 1.5c-4.36 0-7 3.64-7.92 5.25.92 1.61 3.56 5.25 7.92 5.25s7-3.64 7.92-5.25C19 10.39 16.36 6.75 12 6.75Zm0 2.25a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm0 1.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z" />
+    </svg>
+  );
+}
+
+export function MessageList({ messages, currentUserId, participants = [], loading = false, fullHeight = false, seenMessageIds = [] }: Props) {
   const participantById = new Map(participants.map((participant) => [participant.userId, participant]));
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const previousMessageCountRef = useRef(0);
@@ -122,6 +131,7 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
         {!messages.length ? <p style={{ color: "#64748b", textAlign: "center" }}>No messages yet.</p> : null}
         {messages.map((message) => {
           const mine = currentUserId === message.senderId;
+          const seen = seenMessageIds.includes(message.messageId);
           const sender = participantById.get(message.senderId);
           const senderName = mine ? "You" : sender?.displayName ?? "Chat partner";
 
@@ -163,15 +173,15 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
                   <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
                   {mine ? (
                     <span
-                      aria-label={message.deliveryStatus === "sending" ? "Sending" : message.deliveryStatus === "failed" ? "Failed" : "Sent"}
-                      title={message.deliveryStatus === "sending" ? "Sending" : message.deliveryStatus === "failed" ? "Failed" : "Sent"}
+                      aria-label={seen || message.deliveryStatus === "seen" ? "Seen" : message.deliveryStatus === "sending" ? "Sending" : message.deliveryStatus === "failed" ? "Failed" : "Sent"}
+                      title={seen || message.deliveryStatus === "seen" ? "Seen" : message.deliveryStatus === "sending" ? "Sending" : message.deliveryStatus === "failed" ? "Failed" : "Sent"}
                       style={{
                         color: message.deliveryStatus === "failed" ? "#fecaca" : message.deliveryStatus === "sending" ? "#dbeafe" : "#bfdbfe",
                         fontWeight: 700,
                         letterSpacing: 0
                       }}
                     >
-                      {ticksFor(message)}
+                      {seen || message.deliveryStatus === "seen" ? <SeenIcon /> : ticksFor(message)}
                     </span>
                   ) : null}
                 </div>

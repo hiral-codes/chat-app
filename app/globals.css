@@ -439,6 +439,13 @@ input:disabled {
   box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
 }
 
+.message-seen-icon {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  display: block;
+}
+
 .muted-copy {
   color: #64748b;
   margin: 6px 0 0;

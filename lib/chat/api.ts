@@ -19,12 +19,38 @@ export async function listConversations(limit = 20, nextToken?: string): Promise
   return result.data.listConversations;
 }
 
+export async function listAllConversations(): Promise<Conversation[]> {
+  const conversations: Conversation[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    const page = await listConversations(50, nextToken);
+    conversations.push(...page.items);
+    nextToken = page.nextToken ?? undefined;
+  } while (nextToken);
+
+  return conversations;
+}
+
 export async function listMessages(conversationId: string, limit = 30, nextToken?: string): Promise<Paginated<Message>> {
   const result = (await appsyncClient.graphql({
     query: listMessagesQuery,
     variables: { conversationId, limit, nextToken }
   })) as { data: { listMessages: Paginated<Message> } };
   return result.data.listMessages;
+}
+
+export async function listAllMessages(conversationId: string): Promise<Message[]> {
+  const messages: Message[] = [];
+  let nextToken: string | undefined;
+
+  do {
+    const page = await listMessages(conversationId, 100, nextToken);
+    messages.push(...page.items);
+    nextToken = page.nextToken ?? undefined;
+  } while (nextToken);
+
+  return messages;
 }
 
 export async function getConversation(conversationId: string): Promise<Conversation> {

@@ -17,7 +17,7 @@ export type Message = {
   senderId: string;
   content: string;
   createdAt: string;
-  deliveryStatus?: "sending" | "sent" | "failed";
+  deliveryStatus?: "sending" | "sent" | "seen" | "failed";
   clientRequestId?: string;
 };
 

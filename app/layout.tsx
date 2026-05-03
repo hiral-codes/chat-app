@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AuthBootstrap } from "@/components/AuthBootstrap";
+import { ChatRealtimeBridge } from "@/components/chat/ChatRealtimeBridge";
 import { StoreProvider } from "@/components/StoreProvider";
 import "./globals.css";
 
@@ -14,6 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <StoreProvider>
           <AuthBootstrap />
+          <ChatRealtimeBridge />
           {children}
         </StoreProvider>
       </body>

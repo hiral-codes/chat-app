@@ -2,6 +2,8 @@ import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { fetchAuthSession, getCurrentUser } from "aws-amplify/auth";
 import {
   getConversationThread,
+  listAllConversations,
+  listAllMessages,
   listConversations,
   listMessages,
   sendMessage,
@@ -14,6 +16,7 @@ type ChatState = {
   conversations: Conversation[];
   archivedConversationIds: string[];
   unreadCountsByConversationId: Record<string, number>;
+  seenMessageIdsByConversationId: Record<string, string[]>;
   nextConversationToken: string | null;
   selectedConversation?: Conversation;
   messagesByConversationId: Record<string, Message[]>;
@@ -35,6 +38,7 @@ const initialState: ChatState = {
   conversations: [],
   archivedConversationIds: [],
   unreadCountsByConversationId: {},
+  seenMessageIdsByConversationId: {},
   nextConversationToken: null,
   messagesByConversationId: {},
   optimisticMessageIdsByRequestId: {},
@@ -103,11 +107,19 @@ export const initializeChat = createAsyncThunk(
   "chat/initialize",
   async () => {
     const currentUser = await authUser();
-    const data = await listConversations();
+    const conversations = await listAllConversations();
+    const messageEntries = await Promise.all(
+      conversations.map(async (conversation) => {
+        const messages = await listAllMessages(conversation.conversationId);
+        return [conversation.conversationId, messages] as const;
+      })
+    );
+
     return {
       currentUser,
-      conversations: data.items,
-      nextToken: data.nextToken ?? null
+      conversations,
+      messagesByConversationId: Object.fromEntries(messageEntries),
+      nextToken: null
     };
   },
   {
@@ -129,6 +141,21 @@ export const loadMoreConversations = createAsyncThunk(
     return { conversations: data.items, nextToken: data.nextToken ?? null };
   }
 );
+
+export const refreshChatSnapshot = createAsyncThunk("chat/refreshSnapshot", async () => {
+  const conversations = await listAllConversations();
+  const messageEntries = await Promise.all(
+    conversations.map(async (conversation) => {
+      const messages = await listAllMessages(conversation.conversationId);
+      return [conversation.conversationId, messages] as const;
+    })
+  );
+
+  return {
+    conversations,
+    messagesByConversationId: Object.fromEntries(messageEntries)
+  };
+});
 
 export const createConversationByEmail = createAsyncThunk("chat/createConversationByEmail", async (email: string) => {
   return startConversation(email);
@@ -204,20 +231,35 @@ const chatSlice = createSlice({
     unarchiveConversation(state, action: PayloadAction<string>) {
       state.archivedConversationIds = state.archivedConversationIds.filter((conversationId) => conversationId !== action.payload);
     },
+    markConversationSeen(state, action: PayloadAction<string>) {
+      const conversationId = action.payload;
+      state.unreadCountsByConversationId[conversationId] = 0;
+      const messages = state.messagesByConversationId[conversationId] ?? [];
+      state.seenMessageIdsByConversationId[conversationId] = messages.map((message) => message.messageId);
+    },
     messageReceived(state, action: PayloadAction<Message>) {
       const message = { ...action.payload, deliveryStatus: action.payload.deliveryStatus ?? "sent" };
       const existing = state.messagesByConversationId[message.conversationId] ?? [];
+      const alreadyHadMessage = existing.some((item) => item.messageId === message.messageId);
       state.messagesByConversationId[message.conversationId] = dedupeMessages([...existing, message]);
 
       const conversation = state.conversations.find((item) => item.conversationId === message.conversationId);
       if (conversation) {
-        state.conversations = upsertConversation(state.conversations, updateConversationFromMessage(conversation, message), true);
+        const updatedConversation = updateConversationFromMessage(conversation, message);
+        state.conversations = upsertConversation(state.conversations, updatedConversation, true);
+        if (state.selectedConversation?.conversationId === message.conversationId) {
+          state.selectedConversation = updatedConversation;
+        }
       }
 
       const selected = state.selectedConversation?.conversationId === message.conversationId;
       const sentByCurrentUser = state.currentUser?.userId === message.senderId;
-      if (!selected && !sentByCurrentUser) {
+      if (!alreadyHadMessage && !selected && !sentByCurrentUser) {
         state.unreadCountsByConversationId[message.conversationId] = (state.unreadCountsByConversationId[message.conversationId] ?? 0) + 1;
+      } else if (selected) {
+        state.seenMessageIdsByConversationId[message.conversationId] = Array.from(
+          new Set([...(state.seenMessageIdsByConversationId[message.conversationId] ?? []), message.messageId])
+        );
       }
     }
   },
@@ -232,6 +274,11 @@ const chatSlice = createSlice({
         state.conversationsInitialized = true;
         state.currentUser = action.payload.currentUser;
         state.conversations = dedupeConversations(action.payload.conversations);
+        state.messagesByConversationId = Object.fromEntries(
+          Object.entries(action.payload.messagesByConversationId).map(([conversationId, messages]) => [conversationId, dedupeMessages(messages)])
+        );
+        state.messageThreadsInitialized = Object.fromEntries(action.payload.conversations.map((conversation) => [conversation.conversationId, true]));
+        state.messageNextTokens = Object.fromEntries(action.payload.conversations.map((conversation) => [conversation.conversationId, null]));
         state.nextConversationToken = action.payload.nextToken;
       })
       .addCase(initializeChat.rejected, (state, action) => {
@@ -250,6 +297,34 @@ const chatSlice = createSlice({
       .addCase(loadMoreConversations.rejected, (state) => {
         state.loadingMoreConversations = false;
         state.error = "Could not load more conversations.";
+      })
+      .addCase(refreshChatSnapshot.fulfilled, (state, action) => {
+        state.conversations = dedupeConversations(action.payload.conversations);
+
+        for (const [conversationId, messages] of Object.entries(action.payload.messagesByConversationId)) {
+          const existing = state.messagesByConversationId[conversationId] ?? [];
+          const existingMessageIds = new Set(existing.map((message) => message.messageId));
+          const newMessages = messages.filter((message) => !existingMessageIds.has(message.messageId));
+
+          state.messagesByConversationId[conversationId] = dedupeMessages([...existing, ...messages]);
+          state.messageThreadsInitialized[conversationId] = true;
+          state.messageNextTokens[conversationId] = null;
+
+          const selected = state.selectedConversation?.conversationId === conversationId;
+          const unreadMessages = newMessages.filter((message) => message.senderId !== state.currentUser?.userId);
+          if (selected) {
+            state.seenMessageIdsByConversationId[conversationId] = Array.from(
+              new Set([
+                ...(state.seenMessageIdsByConversationId[conversationId] ?? []),
+                ...messages.map((message) => message.messageId)
+              ])
+            );
+            state.unreadCountsByConversationId[conversationId] = 0;
+          } else if (unreadMessages.length) {
+            state.unreadCountsByConversationId[conversationId] =
+              (state.unreadCountsByConversationId[conversationId] ?? 0) + unreadMessages.length;
+          }
+        }
       })
       .addCase(createConversationByEmail.pending, (state) => {
         state.creatingConversation = true;
@@ -278,6 +353,9 @@ const chatSlice = createSlice({
         state.messageNextTokens[action.payload.conversation.conversationId] = action.payload.nextToken;
         state.messageThreadsInitialized[action.payload.conversation.conversationId] = true;
         state.unreadCountsByConversationId[action.payload.conversation.conversationId] = 0;
+        state.seenMessageIdsByConversationId[action.payload.conversation.conversationId] = state.messagesByConversationId[
+          action.payload.conversation.conversationId
+        ].map((message) => message.messageId);
       })
       .addCase(openConversation.rejected, (state) => {
         state.messagesLoading = false;
@@ -319,7 +397,11 @@ const chatSlice = createSlice({
 
         const conversation = state.conversations.find((item) => item.conversationId === action.meta.arg.conversationId);
         if (conversation) {
-          state.conversations = upsertConversation(state.conversations, updateConversationFromMessage(conversation, optimisticMessage), true);
+          const updatedConversation = updateConversationFromMessage(conversation, optimisticMessage);
+          state.conversations = upsertConversation(state.conversations, updatedConversation, true);
+          if (state.selectedConversation?.conversationId === action.meta.arg.conversationId) {
+            state.selectedConversation = updatedConversation;
+          }
         }
         state.unreadCountsByConversationId[action.meta.arg.conversationId] = 0;
       })
@@ -336,7 +418,11 @@ const chatSlice = createSlice({
         ]);
         const conversation = state.conversations.find((item) => item.conversationId === message.conversationId);
         if (conversation) {
-          state.conversations = upsertConversation(state.conversations, updateConversationFromMessage(conversation, message), true);
+          const updatedConversation = updateConversationFromMessage(conversation, message);
+          state.conversations = upsertConversation(state.conversations, updatedConversation, true);
+          if (state.selectedConversation?.conversationId === message.conversationId) {
+            state.selectedConversation = updatedConversation;
+          }
         }
       })
       .addCase(sendChatMessage.rejected, (state, action) => {
@@ -356,5 +442,5 @@ const chatSlice = createSlice({
   }
 });
 
-export const { archiveConversation, clearChatError, messageReceived, unarchiveConversation } = chatSlice.actions;
+export const { archiveConversation, clearChatError, markConversationSeen, messageReceived, unarchiveConversation } = chatSlice.actions;
 export default chatSlice.reducer;
