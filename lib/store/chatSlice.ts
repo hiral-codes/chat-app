@@ -16,6 +16,7 @@ type ChatState = {
   selectedConversation?: Conversation;
   messagesByConversationId: Record<string, Message[]>;
   messageNextTokens: Record<string, string | null>;
+  conversationsInitialized: boolean;
   conversationsLoading: boolean;
   messagesLoading: boolean;
   creatingConversation: boolean;
@@ -30,6 +31,7 @@ const initialState: ChatState = {
   nextConversationToken: null,
   messagesByConversationId: {},
   messageNextTokens: {},
+  conversationsInitialized: false,
   conversationsLoading: false,
   messagesLoading: false,
   creatingConversation: false,
@@ -72,15 +74,24 @@ const authUser = async (): Promise<User> => {
   };
 };
 
-export const initializeChat = createAsyncThunk("chat/initialize", async () => {
-  const currentUser = await authUser();
-  const data = await listConversations();
-  return {
-    currentUser,
-    conversations: data.items,
-    nextToken: data.nextToken ?? null
-  };
-});
+export const initializeChat = createAsyncThunk(
+  "chat/initialize",
+  async () => {
+    const currentUser = await authUser();
+    const data = await listConversations();
+    return {
+      currentUser,
+      conversations: data.items,
+      nextToken: data.nextToken ?? null
+    };
+  },
+  {
+    condition: (_, { getState }) => {
+      const state = getState() as { chat: ChatState };
+      return !state.chat.conversationsInitialized && !state.chat.conversationsLoading;
+    }
+  }
+);
 
 export const loadMoreConversations = createAsyncThunk(
   "chat/loadMoreConversations",
@@ -151,6 +162,7 @@ const chatSlice = createSlice({
       })
       .addCase(initializeChat.fulfilled, (state, action) => {
         state.conversationsLoading = false;
+        state.conversationsInitialized = true;
         state.currentUser = action.payload.currentUser;
         state.conversations = dedupeConversations(action.payload.conversations);
         state.nextConversationToken = action.payload.nextToken;

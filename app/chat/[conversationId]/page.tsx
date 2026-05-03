@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fetchAuthSession } from "aws-amplify/auth";
 import { MessageInput } from "@/components/chat/MessageInput";
 import { MessageList } from "@/components/chat/MessageList";
@@ -22,6 +22,7 @@ ensureAmplifyConfigured();
 export default function ConversationPage() {
   const params = useParams<{ conversationId: string }>();
   const conversationId = useMemo(() => params.conversationId, [params.conversationId]);
+  const [initialMessagesLoading, setInitialMessagesLoading] = useState(true);
   const dispatch = useAppDispatch();
   const {
     currentUser,
@@ -43,7 +44,11 @@ export default function ConversationPage() {
   const title = chatPartnerNames || selectedConversation?.participants.map((participant) => participant.displayName).join(", ") || "Chat";
 
   useEffect(() => {
+    let cancelled = false;
+
     const run = async () => {
+      setInitialMessagesLoading(true);
+
       try {
         const session = await fetchAuthSession();
         if (!session.tokens) {
@@ -51,14 +56,20 @@ export default function ConversationPage() {
           return;
         }
 
-        await dispatch(initializeChat()).unwrap();
+        await dispatch(initializeChat());
         await dispatch(openConversation(conversationId)).unwrap();
       } catch {
         return;
+      } finally {
+        if (!cancelled) setInitialMessagesLoading(false);
       }
     };
 
     run();
+
+    return () => {
+      cancelled = true;
+    };
   }, [conversationId, dispatch]);
 
   useEffect(() => {
@@ -103,7 +114,7 @@ export default function ConversationPage() {
         messages={messages}
         currentUserId={currentUser?.userId}
         participants={selectedConversation?.participants}
-        loading={messagesLoading}
+        loading={initialMessagesLoading || messagesLoading}
       />
       <div style={{ marginTop: 12 }}>
         <MessageInput onSend={onSend} sending={sendingMessage} />
