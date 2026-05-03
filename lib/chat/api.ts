@@ -2,9 +2,14 @@
 
 import { appsyncClient } from "@/lib/aws/appsync-client";
 import { sendMessageMutation, startConversationMutation } from "@/lib/graphql/mutations";
-import { getConversationQuery, listConversationsQuery, listMessagesQuery } from "@/lib/graphql/queries";
+import {
+  getConversationQuery,
+  getConversationThreadQuery,
+  listConversationsQuery,
+  listMessagesQuery
+} from "@/lib/graphql/queries";
 import { onMessageSentSubscription } from "@/lib/graphql/subscriptions";
-import { Conversation, Message, Paginated } from "@/lib/types/chat";
+import { Conversation, ConversationThread, Message, Paginated } from "@/lib/types/chat";
 
 export async function listConversations(limit = 20, nextToken?: string): Promise<Paginated<Conversation>> {
   const result = (await appsyncClient.graphql({
@@ -28,6 +33,18 @@ export async function getConversation(conversationId: string): Promise<Conversat
     variables: { conversationId }
   })) as { data: { getConversation: Conversation } };
   return result.data.getConversation;
+}
+
+export async function getConversationThread(
+  conversationId: string,
+  messagesLimit = 30,
+  messagesNextToken?: string
+): Promise<ConversationThread> {
+  const result = (await appsyncClient.graphql({
+    query: getConversationThreadQuery,
+    variables: { conversationId, messagesLimit, messagesNextToken }
+  })) as { data: { getConversationThread: ConversationThread } };
+  return result.data.getConversationThread;
 }
 
 export async function startConversation(otherUserEmail: string): Promise<Conversation> {

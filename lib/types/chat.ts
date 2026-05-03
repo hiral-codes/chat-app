@@ -23,3 +23,8 @@ export type Paginated<T> = {
   items: T[];
   nextToken?: string | null;
 };
+
+export type ConversationThread = {
+  conversation: Conversation;
+  messages: Paginated<Message>;
+};

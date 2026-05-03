@@ -31,9 +31,15 @@ type MessageConnection {
   nextToken: String
 }
 
+type ConversationThread {
+  conversation: Conversation!
+  messages: MessageConnection!
+}
+
 type Query {
   listConversations(limit: Int = 20, nextToken: String): ConversationConnection!
   getConversation(conversationId: ID!): Conversation!
+  getConversationThread(conversationId: ID!, messagesLimit: Int = 30, messagesNextToken: String): ConversationThread!
   listMessages(conversationId: ID!, limit: Int = 30, nextToken: String): MessageConnection!
 }
 

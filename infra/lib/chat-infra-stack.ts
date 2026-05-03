@@ -99,6 +99,7 @@ export class ChatInfraStack extends cdk.Stack {
     const fields = [
       "listConversations",
       "getConversation",
+      "getConversationThread",
       "listMessages",
       "startConversation",
       "sendMessage",
@@ -106,7 +107,7 @@ export class ChatInfraStack extends cdk.Stack {
     ];
 
     fields.forEach((fieldName) => {
-      const queryFields = ["listConversations", "getConversation", "listMessages"];
+      const queryFields = ["listConversations", "getConversation", "getConversationThread", "listMessages"];
       lambdaDs.createResolver(`Resolver${fieldName}`, {
         typeName: fieldName === "onMessageSent" ? "Subscription" : queryFields.includes(fieldName) ? "Query" : "Mutation",
         fieldName

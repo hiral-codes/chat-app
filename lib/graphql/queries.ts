@@ -45,3 +45,34 @@ export const getConversationQuery = /* GraphQL */ `
     }
   }
 `;
+
+export const getConversationThreadQuery = /* GraphQL */ `
+  query GetConversationThread($conversationId: ID!, $messagesLimit: Int, $messagesNextToken: String) {
+    getConversationThread(
+      conversationId: $conversationId
+      messagesLimit: $messagesLimit
+      messagesNextToken: $messagesNextToken
+    ) {
+      conversation {
+        conversationId
+        lastMessagePreview
+        lastMessageAt
+        participants {
+          userId
+          displayName
+          avatarUrl
+        }
+      }
+      messages {
+        items {
+          messageId
+          conversationId
+          senderId
+          content
+          createdAt
+        }
+        nextToken
+      }
+    }
+  }
+`;

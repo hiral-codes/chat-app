@@ -250,6 +250,11 @@ async function listConversations(currentUserId: string, limit = 20, nextToken?: 
 }
 
 async function getConversation(currentUserId: string, conversationId: string) {
+  const conversation = await getConversationMeta(currentUserId, conversationId);
+  return toConversation(conversation, createUserProfileLoader());
+}
+
+async function getConversationMeta(currentUserId: string, conversationId: string) {
   const result = await client.send(
     new QueryCommand({
       TableName: tableName,
@@ -267,27 +272,10 @@ async function getConversation(currentUserId: string, conversationId: string) {
   const conversation = unmarshall(item);
   const participants = toStringArray(conversation.participantIds);
   if (!participants.includes(currentUserId)) throw new Error("Forbidden");
-  return toConversation(conversation, createUserProfileLoader());
+  return conversation;
 }
 
-async function listMessages(currentUserId: string, conversationId: string, limit = 30, nextToken?: string) {
-  const conversationMeta = await client.send(
-    new QueryCommand({
-      TableName: tableName,
-      KeyConditionExpression: "PK = :pk AND SK = :sk",
-      ExpressionAttributeValues: {
-        ":pk": { S: convKey(conversationId) },
-        ":sk": { S: "META" }
-      },
-      Limit: 1
-    })
-  );
-
-  const meta = conversationMeta.Items?.[0];
-  if (!meta) throw new Error("Conversation not found");
-  const participants = toStringArray(unmarshall(meta).participantIds);
-  if (!participants.includes(currentUserId)) throw new Error("Forbidden");
-
+async function listConversationMessages(conversationId: string, limit = 30, nextToken?: string) {
   const result = await client.send(
     new QueryCommand({
       TableName: tableName,
@@ -298,7 +286,7 @@ async function listMessages(currentUserId: string, conversationId: string, limit
       },
       ExclusiveStartKey: decodeToken(nextToken),
       ScanIndexForward: false,
-      Limit: limit
+      Limit: clampLimit(limit, 30, 100)
     })
   );
 
@@ -314,6 +302,30 @@ async function listMessages(currentUserId: string, conversationId: string, limit
       };
     }),
     nextToken: encodeToken(result.LastEvaluatedKey)
+  };
+}
+
+async function listMessages(currentUserId: string, conversationId: string, limit = 30, nextToken?: string) {
+  await getConversationMeta(currentUserId, conversationId);
+  return listConversationMessages(conversationId, limit, nextToken);
+}
+
+async function getConversationThread(
+  currentUserId: string,
+  conversationId: string,
+  messagesLimit = 30,
+  messagesNextToken?: string
+) {
+  const conversation = await getConversationMeta(currentUserId, conversationId);
+  const loadUserProfile = createUserProfileLoader();
+  const [conversationResult, messages] = await Promise.all([
+    toConversation(conversation, loadUserProfile),
+    listConversationMessages(conversationId, messagesLimit, messagesNextToken)
+  ]);
+
+  return {
+    conversation: conversationResult,
+    messages
   };
 }
 
@@ -406,6 +418,13 @@ export const handler = async (event: AppSyncEvent) => {
       );
     case "getConversation":
       return getConversation(userId, String(event.arguments.conversationId));
+    case "getConversationThread":
+      return getConversationThread(
+        userId,
+        String(event.arguments.conversationId),
+        Number(event.arguments.messagesLimit ?? 30),
+        event.arguments.messagesNextToken ? String(event.arguments.messagesNextToken) : undefined
+      );
     case "listMessages":
       return listMessages(
         userId,

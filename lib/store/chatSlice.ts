@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { fetchAuthSession, getCurrentUser } from "aws-amplify/auth";
 import {
-  getConversation,
+  getConversationThread,
   listConversations,
   listMessages,
   sendMessage,
@@ -16,6 +16,8 @@ type ChatState = {
   selectedConversation?: Conversation;
   messagesByConversationId: Record<string, Message[]>;
   messageNextTokens: Record<string, string | null>;
+  messageThreadsInitialized: Record<string, boolean>;
+  openingConversationId?: string;
   conversationsInitialized: boolean;
   conversationsLoading: boolean;
   messagesLoading: boolean;
@@ -31,6 +33,7 @@ const initialState: ChatState = {
   nextConversationToken: null,
   messagesByConversationId: {},
   messageNextTokens: {},
+  messageThreadsInitialized: {},
   conversationsInitialized: false,
   conversationsLoading: false,
   messagesLoading: false,
@@ -109,14 +112,37 @@ export const createConversationByEmail = createAsyncThunk("chat/createConversati
   return startConversation(email);
 });
 
-export const openConversation = createAsyncThunk("chat/openConversation", async (conversationId: string) => {
-  const [conversation, messages] = await Promise.all([getConversation(conversationId), listMessages(conversationId)]);
-  return {
-    conversation,
-    messages: messages.items,
-    nextToken: messages.nextToken ?? null
-  };
-});
+export const openConversation = createAsyncThunk(
+  "chat/openConversation",
+  async (conversationId: string, { getState }) => {
+    const state = getState() as { chat: ChatState };
+    const cachedConversation =
+      state.chat.selectedConversation?.conversationId === conversationId
+        ? state.chat.selectedConversation
+        : state.chat.conversations.find((conversation) => conversation.conversationId === conversationId);
+
+    if (state.chat.messageThreadsInitialized[conversationId] && cachedConversation) {
+      return {
+        conversation: cachedConversation,
+        messages: state.chat.messagesByConversationId[conversationId] ?? [],
+        nextToken: state.chat.messageNextTokens[conversationId] ?? null
+      };
+    }
+
+    const thread = await getConversationThread(conversationId);
+    return {
+      conversation: thread.conversation,
+      messages: thread.messages.items,
+      nextToken: thread.messages.nextToken ?? null
+    };
+  },
+  {
+    condition: (conversationId, { getState }) => {
+      const state = getState() as { chat: ChatState };
+      return state.chat.openingConversationId !== conversationId;
+    }
+  }
+);
 
 export const loadOlderMessages = createAsyncThunk(
   "chat/loadOlderMessages",
@@ -197,19 +223,23 @@ const chatSlice = createSlice({
         state.creatingConversation = false;
         state.error = action.error.message || "Could not start that conversation.";
       })
-      .addCase(openConversation.pending, (state) => {
+      .addCase(openConversation.pending, (state, action) => {
         state.messagesLoading = true;
+        state.openingConversationId = action.meta.arg;
         state.error = "";
       })
       .addCase(openConversation.fulfilled, (state, action) => {
         state.messagesLoading = false;
+        state.openingConversationId = undefined;
         state.selectedConversation = action.payload.conversation;
         state.conversations = dedupeConversations([action.payload.conversation, ...state.conversations]);
         state.messagesByConversationId[action.payload.conversation.conversationId] = dedupeMessages(action.payload.messages);
         state.messageNextTokens[action.payload.conversation.conversationId] = action.payload.nextToken;
+        state.messageThreadsInitialized[action.payload.conversation.conversationId] = true;
       })
       .addCase(openConversation.rejected, (state) => {
         state.messagesLoading = false;
+        state.openingConversationId = undefined;
         state.error = "This conversation could not be loaded.";
       })
       .addCase(loadOlderMessages.pending, (state) => {
