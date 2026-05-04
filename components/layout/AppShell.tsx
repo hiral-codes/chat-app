@@ -39,6 +39,14 @@ function Icon({ name }: { name: string }) {
     );
   }
 
+  if (name === "profile") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 12.25a4.25 4.25 0 1 0 0-8.5 4.25 4.25 0 0 0 0 8.5Zm0 1.5c-3.75 0-7.25 2.07-7.25 5.15 0 .75.61 1.35 1.36 1.35h11.78c.75 0 1.36-.6 1.36-1.35 0-3.08-3.5-5.15-7.25-5.15Z" />
+      </svg>
+    );
+  }
+
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8m0-5 2 2.2 3-.5.9 2.9 2.8 1.2-1.3 2.7 1.3 2.7-2.8 1.2-.9 2.9-3-.5L12 21l-2-2.2-3 .5-.9-2.9-2.8-1.2 1.3-2.7-1.3-2.7 2.8-1.2.9-2.9 3 .5z" />
@@ -48,9 +56,10 @@ function Icon({ name }: { name: string }) {
 
 export function AppShell({ children }: Props) {
   const pathname = usePathname();
+  const inChatDetail = pathname.startsWith("/chat/");
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${inChatDetail ? "app-shell-chat-detail" : ""}`}>
       <aside className="app-sidebar" aria-label="Primary navigation">
         <Link className="sidebar-brand" href="/chat" aria-label="Chat home">
           <svg viewBox="0 0 48 48" aria-hidden="true">
@@ -83,6 +92,32 @@ export function AppShell({ children }: Props) {
           <Icon name="settings" />
         </Link>
       </aside>
+      <header className="app-mobile-nav" aria-label="Mobile navigation">
+        <div className="mobile-nav-bar">
+          <div className="mobile-brand-group">
+            <Link className="mobile-brand" href="/chat" aria-label="Chat home">
+              <svg viewBox="0 0 48 48" aria-hidden="true">
+                <path className="brand-bubble" d="M8 21.8C8 13.6 14.8 7 23.3 7h1.4C33.2 7 40 13.6 40 21.8S33.2 36.6 24.7 36.6h-4.8l-7.4 5.1v-8.2A14.4 14.4 0 0 1 8 21.8Z" />
+                <path className="brand-spark" d="M24 12.4 26.7 19l7.1 1.1-5.2 4.9 1.2 7-5.8-3.3-5.8 3.3 1.2-7-5.2-4.9 7.1-1.1z" />
+              </svg>
+            </Link>
+            <span>Chat</span>
+          </div>
+          <Link className="mobile-profile-link" href="/profile" aria-label="Open profile" title="Open profile">
+            <Icon name="profile" />
+          </Link>
+        </div>
+        <nav className="mobile-tabs" aria-label="Primary sections">
+          {navItems.map((item) => {
+            const active = pathname === item.href || (item.href === "/chat" && pathname.startsWith("/chat/"));
+            return (
+              <Link key={item.href} href={item.href} className={`mobile-tab ${active ? "mobile-tab-active" : ""}`}>
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+      </header>
       <div className="app-content">{children}</div>
     </div>
   );

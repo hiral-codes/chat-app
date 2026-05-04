@@ -145,9 +145,9 @@ export default function ConversationPage() {
           </Link>
           <div className="chat-detail-title">
             <Avatar user={avatarUser} label={title} />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-              <div style={{ color: "#64748b", fontSize: 13 }}>Conversation</div>
+            <div className="chat-detail-title-text">
+              <div className="chat-detail-name">{title}</div>
+              <div className="chat-detail-status">Conversation</div>
             </div>
           </div>
         </header>

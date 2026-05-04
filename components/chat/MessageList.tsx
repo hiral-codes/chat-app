@@ -96,7 +96,7 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
 
   if (loading) {
     return (
-      <div style={{ display: "grid", gap: 10, padding: "8px 4px", alignContent: "start", minHeight: fullHeight ? 0 : undefined }}>
+      <div className="message-list-loading">
         {[0, 1, 2, 3].map((item) => (
           <div
             key={item}
@@ -114,21 +114,13 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
   }
 
   return (
-    <div style={{ position: "relative", minHeight: fullHeight ? 0 : undefined, height: fullHeight ? "100%" : undefined }}>
+    <div className={`message-list-shell ${fullHeight ? "message-list-shell-full" : ""}`}>
       <div
         ref={scrollContainerRef}
         onScroll={updateScrollButton}
-        style={{
-          display: "grid",
-          gap: 8,
-          height: fullHeight ? "100%" : undefined,
-          maxHeight: fullHeight ? "none" : "60vh",
-          overflowY: "auto",
-          padding: "8px 4px 18px",
-          scrollBehavior: "smooth"
-        }}
+        className={`message-list-scroll ${fullHeight ? "message-list-scroll-full" : ""}`}
       >
-        {!messages.length ? <p style={{ color: "#64748b", textAlign: "center" }}>No messages yet.</p> : null}
+        {!messages.length ? <p className="message-list-empty">No messages yet.</p> : null}
         {messages.map((message) => {
           const mine = currentUserId === message.senderId;
           const seen = seenMessageIds.includes(message.messageId);
@@ -138,37 +130,15 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
           return (
             <div
               key={message.messageId}
-              style={{
-                display: "flex",
-                alignItems: "flex-end",
-                gap: 8,
-                justifyContent: mine ? "flex-end" : "flex-start"
-              }}
+              className={`message-row ${mine ? "message-row-mine" : ""}`}
             >
               {!mine ? <Avatar user={sender} label={senderName} size={32} /> : null}
               <div
-                style={{
-                  maxWidth: "75%",
-                  background: mine ? "#dff3ff" : "rgba(255, 255, 255, 0.76)",
-                  color: "#172033",
-                  padding: "8px 11px",
-                  borderRadius: mine ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
-                  border: mine ? "1px solid rgba(14, 165, 233, 0.32)" : "1px solid rgba(148, 163, 184, 0.22)"
-                }}
+                className={`message-bubble ${mine ? "message-bubble-mine" : ""}`}
               >
-                {!mine ? <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>{senderName}</div> : null}
-                <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", lineHeight: 1.45 }}>{message.content}</div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "flex-end",
-                    gap: 6,
-                    fontSize: 12,
-                    color: "#64748b",
-                    marginTop: 3
-                  }}
-                >
+                {!mine ? <div className="message-sender">{senderName}</div> : null}
+                <div className="message-content">{message.content}</div>
+                <div className="message-meta">
                   <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
                   {mine ? (
                     <span
@@ -195,31 +165,10 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
           type="button"
           aria-label={newMessagesCount ? "Scroll to new messages" : "Scroll to latest message"}
           onClick={() => scrollToBottom()}
-          style={{
-            position: "absolute",
-            right: 14,
-            bottom: 14,
-            minWidth: newMessagesCount ? 142 : 42,
-            width: newMessagesCount ? "auto" : 42,
-            height: 42,
-            borderRadius: 999,
-            border: "1px solid rgba(148, 163, 184, 0.24)",
-            background: "rgba(255, 255, 255, 0.86)",
-            color: "#172033",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-            padding: newMessagesCount ? "0 14px" : 0,
-            cursor: "pointer",
-            fontSize: newMessagesCount ? 13 : 22,
-            fontWeight: 700,
-            lineHeight: 1,
-            transition: "min-width 160ms ease, padding 160ms ease"
-          }}
+          className={`message-scroll-button ${newMessagesCount ? "message-scroll-button-wide" : ""}`}
         >
           {newMessagesCount ? <span>{newMessagesCount === 1 ? "New message" : `${newMessagesCount} new messages`}</span> : null}
-          <span aria-hidden="true" style={{ fontSize: 20, lineHeight: 1 }}>
+          <span aria-hidden="true" className="message-scroll-arrow">
             ↓
           </span>
         </button>

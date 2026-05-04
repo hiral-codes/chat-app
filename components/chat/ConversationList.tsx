@@ -47,7 +47,7 @@ export function ConversationList({
 }: Props) {
   if (loading) {
     return (
-      <div style={{ display: "grid", gap: 10 }}>
+      <div className="conversation-list">
         {[0, 1, 2].map((item) => (
           <div key={item} className="soft-skeleton" style={{ height: 72, borderRadius: 8 }} />
         ))}
@@ -56,11 +56,11 @@ export function ConversationList({
   }
 
   if (!conversations.length) {
-    return <p style={{ color: "#64748b" }}>{emptyText}</p>;
+    return <p className="conversation-empty">{emptyText}</p>;
   }
 
   return (
-    <div style={{ display: "grid", gap: 8 }}>
+    <div className="conversation-list">
       {conversations.map((conversation) => {
         const selected = selectedConversationId === conversation.conversationId;
         const visibleParticipants = conversation.participants.filter((participant) => participant.userId !== currentUserId);
@@ -80,29 +80,18 @@ export function ConversationList({
         return (
           <div
             key={conversation.conversationId}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              minWidth: 0,
-              overflow: "hidden",
-              border: `1px solid ${selected ? "rgba(14, 165, 233, 0.42)" : "rgba(148, 163, 184, 0.18)"}`,
-              background: selected ? "rgba(224, 242, 254, 0.78)" : "rgba(255, 255, 255, 0.54)",
-              padding: 12,
-              borderRadius: 8,
-              transition: "border-color 160ms ease, background 160ms ease"
-            }}
+            className={`conversation-item ${selected ? "conversation-item-selected" : ""}`}
           >
-            <Link href={`/chat/${conversation.conversationId}`} style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, overflow: "hidden", flex: 1 }}>
+            <Link href={`/chat/${conversation.conversationId}`} className="conversation-link">
               <Avatar user={avatarUser} label={title} />
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, maxWidth: "100%" }}>
-                  <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, maxWidth: "100%", flex: 1 }} title={title}>
+              <div className="conversation-content">
+                <div className="conversation-title-row">
+                  <div className="conversation-title" title={title}>
                     {truncate(title, 28)}
                   </div>
                   {unreadCount ? <span className="conversation-unread-badge">{unreadCount > 99 ? "99+" : unreadCount}</span> : null}
                 </div>
-                <div style={{ color: unreadCount ? "#172033" : "#64748b", fontSize: 14, fontWeight: unreadCount ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }} title={preview}>
+                <div className={`conversation-preview ${unreadCount ? "conversation-preview-unread" : ""}`} title={preview}>
                   {truncate(preview, 42)}
                 </div>
                 {email ? (

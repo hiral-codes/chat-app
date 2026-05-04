@@ -18,48 +18,20 @@ export function MessageInput({ onSend }: Props) {
   };
 
   return (
-    <form onSubmit={onSubmit} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    <form onSubmit={onSubmit} className="message-input-form">
       <input
         value={value}
         onChange={(event) => setValue(event.target.value)}
         placeholder="Type a message"
-        style={{
-          flex: 1,
-          padding: 12,
-          borderRadius: 8,
-          border: "1px solid rgba(148, 163, 184, 0.32)",
-          background: "rgba(255, 255, 255, 0.72)",
-          color: "#172033"
-        }}
+        className="message-input-field"
       />
       <button
         type="submit"
         aria-label="Send message"
         disabled={!value.trim()}
-        style={{
-          width: 44,
-          height: 44,
-          borderRadius: "50%",
-          border: 0,
-          background: value.trim() ? "linear-gradient(135deg, #0ea5e9, #2563eb)" : "rgba(148, 163, 184, 0.26)",
-          color: "white",
-          display: "grid",
-          placeItems: "center",
-          cursor: value.trim() ? "pointer" : "not-allowed",
-          transition: "background 160ms ease"
-        }}
+        className="message-send-button"
       >
-        <span
-          aria-hidden="true"
-          style={{
-            width: 0,
-            height: 0,
-            borderTop: "7px solid transparent",
-            borderBottom: "7px solid transparent",
-            borderLeft: "13px solid currentColor",
-            transform: "translateX(2px)"
-          }}
-        />
+        <span aria-hidden="true" className="message-send-icon" />
       </button>
     </form>
   );
