@@ -78,6 +78,50 @@ const dedupeMessages = (messages: Message[]) =>
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   );
 
+const errorMessages = (error: unknown): string[] => {
+  if (error instanceof Error) return [error.message];
+  if (!error || typeof error !== "object") return [];
+
+  const messages: string[] = [];
+  const maybeError = error as { message?: unknown; errors?: unknown };
+  if (typeof maybeError.message === "string") messages.push(maybeError.message);
+  if (Array.isArray(maybeError.errors)) {
+    for (const item of maybeError.errors) {
+      if (item && typeof item === "object" && typeof (item as { message?: unknown }).message === "string") {
+        messages.push((item as { message: string }).message);
+      }
+    }
+  }
+
+  return messages;
+};
+
+const isConversationNotFoundError = (error: unknown) =>
+  errorMessages(error).some((message) => message.includes("Conversation not found"));
+
+const loadMessageEntriesForConversations = async (conversations: Conversation[]) => {
+  const results = await Promise.all(
+    conversations.map(async (conversation) => {
+      try {
+        const messages = await listAllMessages(conversation.conversationId);
+        return { conversation, messages };
+      } catch (error) {
+        if (isConversationNotFoundError(error)) return null;
+        throw error;
+      }
+    })
+  );
+
+  const availableResults = results.filter((result): result is { conversation: Conversation; messages: Message[] } => Boolean(result));
+
+  return {
+    conversations: availableResults.map((result) => result.conversation),
+    messagesByConversationId: Object.fromEntries(
+      availableResults.map((result) => [result.conversation.conversationId, result.messages])
+    )
+  };
+};
+
 const authUser = async (): Promise<User> => {
   const session = await fetchAuthSession();
   if (!session.tokens) throw new Error("Unauthenticated");
@@ -108,17 +152,12 @@ export const initializeChat = createAsyncThunk(
   async () => {
     const currentUser = await authUser();
     const conversations = await listAllConversations();
-    const messageEntries = await Promise.all(
-      conversations.map(async (conversation) => {
-        const messages = await listAllMessages(conversation.conversationId);
-        return [conversation.conversationId, messages] as const;
-      })
-    );
+    const messageSnapshot = await loadMessageEntriesForConversations(conversations);
 
     return {
       currentUser,
-      conversations,
-      messagesByConversationId: Object.fromEntries(messageEntries),
+      conversations: messageSnapshot.conversations,
+      messagesByConversationId: messageSnapshot.messagesByConversationId,
       nextToken: null
     };
   },
@@ -144,16 +183,11 @@ export const loadMoreConversations = createAsyncThunk(
 
 export const refreshChatSnapshot = createAsyncThunk("chat/refreshSnapshot", async () => {
   const conversations = await listAllConversations();
-  const messageEntries = await Promise.all(
-    conversations.map(async (conversation) => {
-      const messages = await listAllMessages(conversation.conversationId);
-      return [conversation.conversationId, messages] as const;
-    })
-  );
+  const messageSnapshot = await loadMessageEntriesForConversations(conversations);
 
   return {
-    conversations,
-    messagesByConversationId: Object.fromEntries(messageEntries)
+    conversations: messageSnapshot.conversations,
+    messagesByConversationId: messageSnapshot.messagesByConversationId
   };
 });
 
