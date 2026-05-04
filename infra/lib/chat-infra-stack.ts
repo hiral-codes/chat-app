@@ -8,6 +8,12 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambdaNode from "aws-cdk-lib/aws-lambda-nodejs";
 import { Construct } from "constructs";
 
+export type BackendStage = "local" | "staging" | "production";
+
+export interface ChatInfraStackProps extends cdk.StackProps {
+  stage: BackendStage;
+}
+
 const urlsFromConfig = (value: unknown, fallback: string[]) => {
   if (typeof value !== "string") return fallback;
 
@@ -19,19 +25,42 @@ const urlsFromConfig = (value: unknown, fallback: string[]) => {
   return urls.length ? urls : fallback;
 };
 
+const stringFromConfig = (value: unknown) => {
+  if (typeof value !== "string") return undefined;
+
+  const trimmed = value.trim();
+  return trimmed || undefined;
+};
+
+const requireUrlsFromConfig = (stage: BackendStage, purpose: "callback" | "logout", value: unknown) => {
+  const urls = urlsFromConfig(value, []);
+  if (urls.length) return urls;
+
+  throw new Error(
+    `Missing Cognito ${purpose} URLs for ${stage}. Pass -c ${purpose}Urls=https://your-domain/... or set COGNITO_${purpose.toUpperCase()}_URLS.`
+  );
+};
+
+const stageTitle = (stage: BackendStage) => stage[0].toUpperCase() + stage.slice(1);
+
 export class ChatInfraStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: ChatInfraStackProps) {
     super(scope, id, props);
-    const callbackUrls = urlsFromConfig(
-      this.node.tryGetContext("callbackUrls") ?? process.env.COGNITO_CALLBACK_URLS,
-      ["http://localhost:3000/api/auth/callback"]
-    );
-    const logoutUrls = urlsFromConfig(
-      this.node.tryGetContext("logoutUrls") ?? process.env.COGNITO_LOGOUT_URLS,
-      ["http://localhost:3000/login"]
-    );
+    const { stage } = props;
+    const callbackConfig = this.node.tryGetContext("callbackUrls") ?? process.env.COGNITO_CALLBACK_URLS;
+    const logoutConfig = this.node.tryGetContext("logoutUrls") ?? process.env.COGNITO_LOGOUT_URLS;
+    const callbackUrls =
+      stage === "local" ? urlsFromConfig(callbackConfig, ["http://localhost:3000/api/auth/callback"]) : requireUrlsFromConfig(stage, "callback", callbackConfig);
+    const logoutUrls = stage === "local" ? urlsFromConfig(logoutConfig, ["http://localhost:3000/login"]) : requireUrlsFromConfig(stage, "logout", logoutConfig);
+    const domainPrefix =
+      stringFromConfig(this.node.tryGetContext("domainPrefix")) ??
+      stringFromConfig(process.env.COGNITO_DOMAIN_PREFIX) ??
+      `chatapprealtimemvp-${stage}`;
+    const removalPolicy = stage === "production" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
+    const resourcePrefix = `chat-${stage}`;
 
     const userPool = new cognito.UserPool(this, "ChatUserPool", {
+      userPoolName: `${resourcePrefix}-users`,
       selfSignUpEnabled: false,
       signInAliases: { email: true },
       standardAttributes: {
@@ -53,16 +82,17 @@ export class ChatInfraStack extends cdk.Stack {
     new cognito.UserPoolDomain(this, "ChatUserPoolDomain", {
       userPool,
       cognitoDomain: {
-        domainPrefix: "chatapprealtimemvp"
+        domainPrefix
       }
     });
 
     const chatTable = new dynamodb.Table(this, "ChatTable", {
+      tableName: `${resourcePrefix}-table`,
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
       sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
       pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.DESTROY
+      removalPolicy
     });
 
     chatTable.addGlobalSecondaryIndex({
@@ -78,7 +108,7 @@ export class ChatInfraStack extends cdk.Stack {
     });
 
     const api = new appsync.GraphqlApi(this, "ChatApi", {
-      name: "chat-api",
+      name: `${resourcePrefix}-api`,
       schema: appsync.SchemaFile.fromAsset(path.join(__dirname, "..", "appsync", "schema.graphql")),
       authorizationConfig: {
         defaultAuthorization: {
@@ -90,6 +120,7 @@ export class ChatInfraStack extends cdk.Stack {
     });
 
     const resolverFn = new lambdaNode.NodejsFunction(this, "ChatResolverFn", {
+      functionName: `${resourcePrefix}-resolver`,
       runtime: lambda.Runtime.NODEJS_20_X,
       entry: path.join(__dirname, "..", "lambda", "chat-resolver.ts"),
       handler: "handler",
@@ -133,8 +164,10 @@ export class ChatInfraStack extends cdk.Stack {
       });
     });
 
+    new cdk.CfnOutput(this, "Stage", { value: stageTitle(stage) });
     new cdk.CfnOutput(this, "UserPoolId", { value: userPool.userPoolId });
     new cdk.CfnOutput(this, "UserPoolClientId", { value: userPoolClient.userPoolClientId });
+    new cdk.CfnOutput(this, "CognitoDomain", { value: `${domainPrefix}.auth.${this.region}.amazoncognito.com` });
     new cdk.CfnOutput(this, "GraphqlApiUrl", { value: api.graphqlUrl });
     new cdk.CfnOutput(this, "GraphqlApiId", { value: api.apiId });
     new cdk.CfnOutput(this, "ChatTableName", { value: chatTable.tableName });

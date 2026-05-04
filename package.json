@@ -8,7 +8,13 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "cdk:synth": "cdk synth -a \"tsx infra/bin/chat-app.ts\""
+    "cdk:synth": "cdk synth -a \"tsx infra/bin/chat-app.ts\"",
+    "cdk:synth:local": "cdk synth -a \"tsx infra/bin/chat-app.ts\" -c stage=local",
+    "cdk:synth:staging": "cdk synth -a \"tsx infra/bin/chat-app.ts\" -c stage=staging",
+    "cdk:synth:production": "cdk synth -a \"tsx infra/bin/chat-app.ts\" -c stage=production",
+    "cdk:deploy:local": "cdk deploy -a \"tsx infra/bin/chat-app.ts\" -c stage=local",
+    "cdk:deploy:staging": "cdk deploy -a \"tsx infra/bin/chat-app.ts\" -c stage=staging",
+    "cdk:deploy:production": "cdk deploy -a \"tsx infra/bin/chat-app.ts\" -c stage=production"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1041.0",
