@@ -1,21 +1,72 @@
 "use client";
 
 import { appsyncClient } from "@/lib/aws/appsync-client";
-import { sendMessageMutation, startConversationMutation } from "@/lib/graphql/mutations";
 import {
+  markConversationDeliveredMutation,
+  markConversationReadMutation,
+  sendMessageMutation,
+  startConversationLegacyMutation,
+  startConversationMutation,
+  updatePresenceMutation
+} from "@/lib/graphql/mutations";
+import {
+  getConversationLegacyQuery,
   getConversationQuery,
+  getConversationThreadLegacyQuery,
   getConversationThreadQuery,
+  listConversationsLegacyQuery,
   listConversationsQuery,
   listMessagesQuery
 } from "@/lib/graphql/queries";
-import { onMessageSentSubscription } from "@/lib/graphql/subscriptions";
-import { Conversation, ConversationThread, Message, Paginated } from "@/lib/types/chat";
+import {
+  onConversationReceiptUpdatedSubscription,
+  onMessageSentSubscription,
+  onPresenceChangedSubscription
+} from "@/lib/graphql/subscriptions";
+import { Conversation, ConversationReceipt, ConversationThread, Message, Paginated, UserPresence } from "@/lib/types/chat";
+
+const errorMessages = (error: unknown): string[] => {
+  if (error instanceof Error) return [error.message];
+  if (!error || typeof error !== "object") return [];
+
+  const messages: string[] = [];
+  const maybeError = error as { message?: unknown; errors?: unknown };
+  if (typeof maybeError.message === "string") messages.push(maybeError.message);
+  if (Array.isArray(maybeError.errors)) {
+    for (const item of maybeError.errors) {
+      if (item && typeof item === "object" && typeof (item as { message?: unknown }).message === "string") {
+        messages.push((item as { message: string }).message);
+      }
+    }
+  }
+
+  return messages;
+};
+
+const isSchemaFieldUndefinedError = (error: unknown) =>
+  errorMessages(error).some((message) => message.includes("Validation error of type FieldUndefined"));
+
+let receiptSubscriptionsUnavailable = false;
+let presenceSubscriptionsUnavailable = false;
+const noop = () => undefined;
 
 export async function listConversations(limit = 20, nextToken?: string): Promise<Paginated<Conversation>> {
-  const result = (await appsyncClient.graphql({
-    query: listConversationsQuery,
-    variables: { limit, nextToken }
-  })) as { data: { listConversations: Paginated<Conversation> } };
+  const variables = { limit, nextToken };
+  let result: { data: { listConversations: Paginated<Conversation> } };
+
+  try {
+    result = (await appsyncClient.graphql({
+      query: listConversationsQuery,
+      variables
+    })) as { data: { listConversations: Paginated<Conversation> } };
+  } catch (error) {
+    if (!isSchemaFieldUndefinedError(error)) throw error;
+    result = (await appsyncClient.graphql({
+      query: listConversationsLegacyQuery,
+      variables
+    })) as { data: { listConversations: Paginated<Conversation> } };
+  }
+
   return result.data.listConversations;
 }
 
@@ -54,10 +105,21 @@ export async function listAllMessages(conversationId: string): Promise<Message[]
 }
 
 export async function getConversation(conversationId: string): Promise<Conversation> {
-  const result = (await appsyncClient.graphql({
-    query: getConversationQuery,
-    variables: { conversationId }
-  })) as { data: { getConversation: Conversation } };
+  let result: { data: { getConversation: Conversation } };
+
+  try {
+    result = (await appsyncClient.graphql({
+      query: getConversationQuery,
+      variables: { conversationId }
+    })) as { data: { getConversation: Conversation } };
+  } catch (error) {
+    if (!isSchemaFieldUndefinedError(error)) throw error;
+    result = (await appsyncClient.graphql({
+      query: getConversationLegacyQuery,
+      variables: { conversationId }
+    })) as { data: { getConversation: Conversation } };
+  }
+
   return result.data.getConversation;
 }
 
@@ -66,18 +128,42 @@ export async function getConversationThread(
   messagesLimit = 30,
   messagesNextToken?: string
 ): Promise<ConversationThread> {
-  const result = (await appsyncClient.graphql({
-    query: getConversationThreadQuery,
-    variables: { conversationId, messagesLimit, messagesNextToken }
-  })) as { data: { getConversationThread: ConversationThread } };
+  const variables = { conversationId, messagesLimit, messagesNextToken };
+  let result: { data: { getConversationThread: ConversationThread } };
+
+  try {
+    result = (await appsyncClient.graphql({
+      query: getConversationThreadQuery,
+      variables
+    })) as { data: { getConversationThread: ConversationThread } };
+  } catch (error) {
+    if (!isSchemaFieldUndefinedError(error)) throw error;
+    result = (await appsyncClient.graphql({
+      query: getConversationThreadLegacyQuery,
+      variables
+    })) as { data: { getConversationThread: ConversationThread } };
+  }
+
   return result.data.getConversationThread;
 }
 
 export async function startConversation(otherUserEmail: string): Promise<Conversation> {
-  const result = (await appsyncClient.graphql({
-    query: startConversationMutation,
-    variables: { otherUserId: otherUserEmail }
-  })) as { data: { startConversation: Conversation } };
+  const variables = { otherUserId: otherUserEmail };
+  let result: { data: { startConversation: Conversation } };
+
+  try {
+    result = (await appsyncClient.graphql({
+      query: startConversationMutation,
+      variables
+    })) as { data: { startConversation: Conversation } };
+  } catch (error) {
+    if (!isSchemaFieldUndefinedError(error)) throw error;
+    result = (await appsyncClient.graphql({
+      query: startConversationLegacyMutation,
+      variables
+    })) as { data: { startConversation: Conversation } };
+  }
+
   return result.data.startConversation;
 }
 
@@ -87,6 +173,30 @@ export async function sendMessage(conversationId: string, content: string): Prom
     variables: { conversationId, content }
   })) as { data: { sendMessage: Message } };
   return result.data.sendMessage;
+}
+
+export async function markConversationDelivered(conversationId: string): Promise<ConversationReceipt> {
+  const result = (await appsyncClient.graphql({
+    query: markConversationDeliveredMutation,
+    variables: { conversationId }
+  })) as { data: { markConversationDelivered: ConversationReceipt } };
+  return result.data.markConversationDelivered;
+}
+
+export async function markConversationRead(conversationId: string): Promise<ConversationReceipt> {
+  const result = (await appsyncClient.graphql({
+    query: markConversationReadMutation,
+    variables: { conversationId }
+  })) as { data: { markConversationRead: ConversationReceipt } };
+  return result.data.markConversationRead;
+}
+
+export async function updatePresence(online: boolean): Promise<UserPresence> {
+  const result = (await appsyncClient.graphql({
+    query: updatePresenceMutation,
+    variables: { online }
+  })) as { data: { updatePresence: UserPresence } };
+  return result.data.updatePresence;
 }
 
 export function subscribeToMessages(conversationId: string, onMessage: (message: Message) => void) {
@@ -102,6 +212,59 @@ export function subscribeToMessages(conversationId: string, onMessage: (message:
       },
       error: (error: unknown) => {
         console.error("subscription error", error);
+      }
+    });
+
+  return () => sub.unsubscribe();
+}
+
+export function subscribeToConversationReceipts(
+  conversationId: string,
+  onReceipt: (receipt: ConversationReceipt) => void
+) {
+  if (receiptSubscriptionsUnavailable) return noop;
+
+  const sub = (
+    appsyncClient.graphql({
+      query: onConversationReceiptUpdatedSubscription,
+      variables: { conversationId }
+    }) as any
+  ).subscribe({
+      next: ({ data }: any) => {
+        const receipt = data?.onConversationReceiptUpdated as ConversationReceipt | undefined;
+        if (receipt) onReceipt(receipt);
+      },
+      error: (error: unknown) => {
+        if (isSchemaFieldUndefinedError(error)) {
+          receiptSubscriptionsUnavailable = true;
+          return;
+        }
+        console.error("receipt subscription error", error);
+      }
+    });
+
+  return () => sub.unsubscribe();
+}
+
+export function subscribeToPresence(userId: string, onPresence: (presence: UserPresence) => void) {
+  if (presenceSubscriptionsUnavailable) return noop;
+
+  const sub = (
+    appsyncClient.graphql({
+      query: onPresenceChangedSubscription,
+      variables: { userId }
+    }) as any
+  ).subscribe({
+      next: ({ data }: any) => {
+        const presence = data?.onPresenceChanged as UserPresence | undefined;
+        if (presence) onPresence(presence);
+      },
+      error: (error: unknown) => {
+        if (isSchemaFieldUndefinedError(error)) {
+          presenceSubscriptionsUnavailable = true;
+          return;
+        }
+        console.error("presence subscription error", error);
       }
     });
 

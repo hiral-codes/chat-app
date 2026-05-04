@@ -153,13 +153,19 @@ export class ChatInfraStack extends cdk.Stack {
       "listMessages",
       "startConversation",
       "sendMessage",
-      "onMessageSent"
+      "markConversationDelivered",
+      "markConversationRead",
+      "updatePresence",
+      "onMessageSent",
+      "onConversationReceiptUpdated",
+      "onPresenceChanged"
     ];
 
     fields.forEach((fieldName) => {
       const queryFields = ["listConversations", "getConversation", "getConversationThread", "listMessages"];
+      const subscriptionFields = ["onMessageSent", "onConversationReceiptUpdated", "onPresenceChanged"];
       lambdaDs.createResolver(`Resolver${fieldName}`, {
-        typeName: fieldName === "onMessageSent" ? "Subscription" : queryFields.includes(fieldName) ? "Query" : "Mutation",
+        typeName: subscriptionFields.includes(fieldName) ? "Subscription" : queryFields.includes(fieldName) ? "Query" : "Mutation",
         fieldName
       });
     });

@@ -33,6 +33,19 @@ const nameFromEmail = (email: string) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 
+const formatPresence = (lastSeenAt?: string | null) => {
+  if (!lastSeenAt) return "Offline";
+
+  const deltaMs = Date.now() - new Date(lastSeenAt).getTime();
+  const minutes = Math.max(1, Math.floor(deltaMs / 60000));
+  if (minutes < 60) return `Last seen ${minutes}m ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Last seen ${hours}h ago`;
+
+  return `Last seen ${new Date(lastSeenAt).toLocaleDateString()}`;
+};
+
 export function ConversationList({
   conversations,
   selectedConversationId,
@@ -76,6 +89,9 @@ export function ConversationList({
         const avatarUser = titleParticipants[0];
         const archived = archivedConversationIds.includes(conversation.conversationId);
         const unreadCount = unreadCountsByConversationId[conversation.conversationId] ?? 0;
+        const online = titleParticipants.some((participant) => participant.onlineStatus === "online");
+        const lastSeenAt = titleParticipants.find((participant) => participant.lastSeenAt)?.lastSeenAt;
+        const presenceLabel = online ? "Online" : formatPresence(lastSeenAt);
 
         return (
           <div
@@ -93,6 +109,10 @@ export function ConversationList({
                 </div>
                 <div className={`conversation-preview ${unreadCount ? "conversation-preview-unread" : ""}`} title={preview}>
                   {truncate(preview, 42)}
+                </div>
+                <div className={`conversation-presence ${online ? "conversation-presence-online" : ""}`}>
+                  <span aria-hidden="true" className="presence-dot" />
+                  {presenceLabel}
                 </div>
                 {email ? (
                   <div className="conversation-email" title={email}>

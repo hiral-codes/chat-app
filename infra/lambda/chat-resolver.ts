@@ -1,7 +1,8 @@
 import {
   DynamoDBClient,
   QueryCommand,
-  TransactWriteItemsCommand
+  TransactWriteItemsCommand,
+  UpdateItemCommand
 } from "@aws-sdk/client-dynamodb";
 import { CognitoIdentityProviderClient, ListUsersCommand } from "@aws-sdk/client-cognito-identity-provider";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
@@ -34,6 +35,7 @@ const decodeToken = (token?: string) => (token ? JSON.parse(Buffer.from(token, "
 const userKey = (userId: string) => `USER#${userId}`;
 const convKey = (conversationId: string) => `CONV#${conversationId}`;
 const membershipKey = (conversationId: string) => `CONV#${conversationId}`;
+const presenceKey = () => "PRESENCE";
 const participantHash = (a: string, b: string) => [a, b].sort().join("#");
 const toStringArray = (value: unknown): string[] => {
   if (Array.isArray(value)) return value.map(String);
@@ -54,7 +56,20 @@ const displayNameFromAttributes = (attributes: { Name?: string; Value?: string }
   attribute(attributes, "email") ||
   fallback;
 
-const toUser = (id: string, displayName = id, avatarUrl: string | null = null) => ({ userId: id, displayName, avatarUrl });
+const onlineWindowMs = 60_000;
+const toUser = (
+  id: string,
+  displayName = id,
+  avatarUrl: string | null = null,
+  presence: { onlineStatus?: string; lastSeenAt?: string | null; lastHeartbeatAt?: string | null } = {}
+) => ({
+  userId: id,
+  displayName,
+  avatarUrl,
+  onlineStatus: presence.onlineStatus === "online" ? "online" : "offline",
+  lastSeenAt: presence.lastSeenAt ?? null,
+  lastHeartbeatAt: presence.lastHeartbeatAt ?? null
+});
 type UserProfile = ReturnType<typeof toUser>;
 type LoadUserProfile = (userId: string) => Promise<UserProfile>;
 
@@ -72,7 +87,8 @@ const createUserProfileLoader = (): LoadUserProfile => {
 };
 
 async function getUserProfile(userId: string) {
-  if (!userPoolId) return toUser(userId);
+  const presence = await getUserPresence(userId);
+  if (!userPoolId) return toUser(userId, userId, null, presence);
 
   try {
     const result = await cognito.send(
@@ -84,11 +100,37 @@ async function getUserProfile(userId: string) {
     );
     const user = result.Users?.[0];
     const attributes = user?.Attributes ?? [];
-    return toUser(userId, displayNameFromAttributes(attributes, userId), attribute(attributes, "picture") ?? null);
+    return toUser(userId, displayNameFromAttributes(attributes, userId), attribute(attributes, "picture") ?? null, presence);
   } catch (error) {
     console.warn("Unable to load user profile", { userId, error });
-    return toUser(userId);
+    return toUser(userId, userId, null, presence);
   }
+}
+
+async function getUserPresence(userId: string) {
+  const result = await client.send(
+    new QueryCommand({
+      TableName: tableName,
+      KeyConditionExpression: "PK = :pk AND SK = :sk",
+      ExpressionAttributeValues: {
+        ":pk": { S: userKey(userId) },
+        ":sk": { S: presenceKey() }
+      },
+      Limit: 1
+    })
+  );
+
+  const item = result.Items?.[0] ? unmarshall(result.Items[0]) : {};
+  const lastHeartbeatAt = typeof item.lastHeartbeatAt === "string" ? item.lastHeartbeatAt : null;
+  const heartbeatIsFresh = lastHeartbeatAt ? Date.now() - new Date(lastHeartbeatAt).getTime() < onlineWindowMs : false;
+  const onlineStatus = item.onlineStatus === "online" && heartbeatIsFresh ? "online" : "offline";
+
+  return {
+    userId,
+    onlineStatus,
+    lastSeenAt: typeof item.lastSeenAt === "string" ? item.lastSeenAt : null,
+    lastHeartbeatAt
+  };
 }
 
 async function findUserByEmail(email: string) {
@@ -110,18 +152,49 @@ async function findUserByEmail(email: string) {
   if (!user || !userId) throw new Error("No user exists with that email address");
 
   const attributes = user.Attributes ?? [];
-  return toUser(userId, displayNameFromAttributes(attributes, trimmedEmail), attribute(attributes, "picture") ?? null);
+  return toUser(
+    userId,
+    displayNameFromAttributes(attributes, trimmedEmail),
+    attribute(attributes, "picture") ?? null,
+    await getUserPresence(userId)
+  );
 }
 
 async function toConversation(item: Record<string, unknown>, loadUserProfile: LoadUserProfile = getUserProfile) {
   const participantIds = Array.from(new Set(toStringArray(item.participantIds)));
-  const participants = await Promise.all(participantIds.map(loadUserProfile));
+  const [participants, receipts] = await Promise.all([
+    Promise.all(participantIds.map(loadUserProfile)),
+    Promise.all(participantIds.map((participantId) => getConversationReceipt(participantId, String(item.conversationId))))
+  ]);
 
   return {
     conversationId: String(item.conversationId),
     participants,
     lastMessagePreview: item.lastMessagePreview ?? null,
-    lastMessageAt: item.lastMessageAt ?? null
+    lastMessageAt: item.lastMessageAt ?? null,
+    receipts
+  };
+}
+
+async function getConversationReceipt(userId: string, conversationId: string) {
+  const result = await client.send(
+    new QueryCommand({
+      TableName: tableName,
+      KeyConditionExpression: "PK = :pk AND SK = :sk",
+      ExpressionAttributeValues: {
+        ":pk": { S: userKey(userId) },
+        ":sk": { S: membershipKey(conversationId) }
+      },
+      Limit: 1
+    })
+  );
+
+  const item = result.Items?.[0] ? unmarshall(result.Items[0]) : {};
+  return {
+    conversationId,
+    userId,
+    deliveredAt: typeof item.lastDeliveredAt === "string" ? item.lastDeliveredAt : null,
+    readAt: typeof item.lastReadAt === "string" ? item.lastReadAt : null
   };
 }
 
@@ -405,6 +478,64 @@ async function sendMessage(currentUserId: string, conversationId: string, conten
   return { messageId, conversationId, senderId: currentUserId, content, createdAt: timestamp };
 }
 
+async function updateConversationReceipt(currentUserId: string, conversationId: string, field: "lastDeliveredAt" | "lastReadAt") {
+  await getConversationMeta(currentUserId, conversationId);
+  const timestamp = nowIso();
+  const updateExpression =
+    field === "lastReadAt"
+      ? "SET lastDeliveredAt = :time, lastReadAt = :time"
+      : "SET lastDeliveredAt = :time";
+
+  const result = await client.send(
+    new UpdateItemCommand({
+      TableName: tableName,
+      Key: { PK: { S: userKey(currentUserId) }, SK: { S: membershipKey(conversationId) } },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeValues: {
+        ":time": { S: timestamp }
+      },
+      ReturnValues: "ALL_NEW"
+    })
+  );
+
+  const item = result.Attributes ? unmarshall(result.Attributes) : {};
+  return {
+    conversationId,
+    userId: currentUserId,
+    deliveredAt: typeof item.lastDeliveredAt === "string" ? item.lastDeliveredAt : timestamp,
+    readAt: typeof item.lastReadAt === "string" ? item.lastReadAt : null
+  };
+}
+
+async function updatePresence(currentUserId: string, online: boolean) {
+  const timestamp = nowIso();
+  const status = online ? "online" : "offline";
+  const updateExpression = online
+    ? "SET onlineStatus = :status, lastHeartbeatAt = :time"
+    : "SET onlineStatus = :status, lastSeenAt = :time, lastHeartbeatAt = :time";
+
+  const result = await client.send(
+    new UpdateItemCommand({
+      TableName: tableName,
+      Key: { PK: { S: userKey(currentUserId) }, SK: { S: presenceKey() } },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeValues: {
+        ":status": { S: status },
+        ":time": { S: timestamp }
+      },
+      ReturnValues: "ALL_NEW"
+    })
+  );
+
+  const item = result.Attributes ? unmarshall(result.Attributes) : {};
+  return {
+    userId: currentUserId,
+    onlineStatus: item.onlineStatus === "online" ? "online" : "offline",
+    lastSeenAt: typeof item.lastSeenAt === "string" ? item.lastSeenAt : null,
+    lastHeartbeatAt: typeof item.lastHeartbeatAt === "string" ? item.lastHeartbeatAt : null
+  };
+}
+
 export const handler = async (event: AppSyncEvent) => {
   const userId = assertAuthed(event);
   const fieldName = event.fieldName ?? event.info?.fieldName;
@@ -436,7 +567,15 @@ export const handler = async (event: AppSyncEvent) => {
       );
     case "sendMessage":
       return sendMessage(userId, String(event.arguments.conversationId), String(event.arguments.content ?? ""));
+    case "markConversationDelivered":
+      return updateConversationReceipt(userId, String(event.arguments.conversationId), "lastDeliveredAt");
+    case "markConversationRead":
+      return updateConversationReceipt(userId, String(event.arguments.conversationId), "lastReadAt");
+    case "updatePresence":
+      return updatePresence(userId, Boolean(event.arguments.online));
     case "onMessageSent":
+    case "onConversationReceiptUpdated":
+    case "onPresenceChanged":
       return null;
     default:
       throw new Error(`Unknown field ${fieldName}`);

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/chat/Avatar";
-import { Message, User } from "@/lib/types/chat";
+import { ConversationReceipt, Message, User } from "@/lib/types/chat";
 
 type Props = {
   messages: Message[];
@@ -11,6 +11,7 @@ type Props = {
   loading?: boolean;
   fullHeight?: boolean;
   seenMessageIds?: string[];
+  peerReceipt?: ConversationReceipt;
 };
 
 const bottomThreshold = 96;
@@ -18,6 +19,7 @@ const bottomThreshold = 96;
 const ticksFor = (message: Message) => {
   if (message.deliveryStatus === "failed") return "!";
   if (message.deliveryStatus === "sending") return "✓";
+  if (message.deliveryStatus === "delivered") return "✓✓";
   return "✓✓";
 };
 
@@ -29,7 +31,17 @@ function SeenIcon() {
   );
 }
 
-export function MessageList({ messages, currentUserId, participants = [], loading = false, fullHeight = false, seenMessageIds = [] }: Props) {
+const receiptCoversMessage = (timestamp: string | null | undefined, message: Message) =>
+  Boolean(timestamp && new Date(timestamp).getTime() >= new Date(message.createdAt).getTime());
+
+const statusForMessage = (message: Message, peerReceipt?: ConversationReceipt) => {
+  if (message.deliveryStatus === "failed" || message.deliveryStatus === "sending") return message.deliveryStatus;
+  if (receiptCoversMessage(peerReceipt?.readAt, message)) return "seen";
+  if (receiptCoversMessage(peerReceipt?.deliveredAt, message)) return "delivered";
+  return message.deliveryStatus ?? "sent";
+};
+
+export function MessageList({ messages, currentUserId, participants = [], loading = false, fullHeight = false, seenMessageIds = [], peerReceipt }: Props) {
   const participantById = new Map(participants.map((participant) => [participant.userId, participant]));
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const previousMessageCountRef = useRef(0);
@@ -123,7 +135,8 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
         {!messages.length ? <p className="message-list-empty">No messages yet.</p> : null}
         {messages.map((message) => {
           const mine = currentUserId === message.senderId;
-          const seen = seenMessageIds.includes(message.messageId);
+          const deliveryStatus = mine ? statusForMessage(message, peerReceipt) : message.deliveryStatus;
+          const seen = deliveryStatus === "seen";
           const sender = participantById.get(message.senderId);
           const senderName = mine ? "You" : sender?.displayName ?? "Chat partner";
 
@@ -142,15 +155,15 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
                   <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
                   {mine ? (
                     <span
-                      aria-label={seen || message.deliveryStatus === "seen" ? "Seen" : message.deliveryStatus === "sending" ? "Sending" : message.deliveryStatus === "failed" ? "Failed" : "Sent"}
-                      title={seen || message.deliveryStatus === "seen" ? "Seen" : message.deliveryStatus === "sending" ? "Sending" : message.deliveryStatus === "failed" ? "Failed" : "Sent"}
+                      aria-label={seen ? "Seen" : deliveryStatus === "delivered" ? "Delivered" : deliveryStatus === "sending" ? "Sending" : deliveryStatus === "failed" ? "Failed" : "Sent"}
+                      title={seen ? "Seen" : deliveryStatus === "delivered" ? "Delivered" : deliveryStatus === "sending" ? "Sending" : deliveryStatus === "failed" ? "Failed" : "Sent"}
                       style={{
-                        color: message.deliveryStatus === "failed" ? "#dc2626" : message.deliveryStatus === "sending" ? "#64748b" : "#2563eb",
+                        color: deliveryStatus === "failed" ? "#dc2626" : deliveryStatus === "sending" ? "#64748b" : seen ? "#2563eb" : "#0f766e",
                         fontWeight: 700,
                         letterSpacing: 0
                       }}
                     >
-                      {seen || message.deliveryStatus === "seen" ? <SeenIcon /> : ticksFor(message)}
+                      {seen ? <SeenIcon /> : ticksFor({ ...message, deliveryStatus })}
                     </span>
                   ) : null}
                 </div>

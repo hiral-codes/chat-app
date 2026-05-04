@@ -6,10 +6,12 @@ import {
   listAllMessages,
   listConversations,
   listMessages,
+  markConversationRead,
   sendMessage,
-  startConversation
+  startConversation,
+  updatePresence
 } from "@/lib/chat/api";
-import { Conversation, Message, User } from "@/lib/types/chat";
+import { Conversation, ConversationReceipt, Message, User, UserPresence } from "@/lib/types/chat";
 
 type ChatState = {
   currentUser?: User;
@@ -17,6 +19,8 @@ type ChatState = {
   archivedConversationIds: string[];
   unreadCountsByConversationId: Record<string, number>;
   seenMessageIdsByConversationId: Record<string, string[]>;
+  receiptsByConversationId: Record<string, Record<string, ConversationReceipt>>;
+  userPresenceById: Record<string, UserPresence>;
   nextConversationToken: string | null;
   selectedConversation?: Conversation;
   messagesByConversationId: Record<string, Message[]>;
@@ -39,6 +43,8 @@ const initialState: ChatState = {
   archivedConversationIds: [],
   unreadCountsByConversationId: {},
   seenMessageIdsByConversationId: {},
+  receiptsByConversationId: {},
+  userPresenceById: {},
   nextConversationToken: null,
   messagesByConversationId: {},
   optimisticMessageIdsByRequestId: {},
@@ -72,6 +78,42 @@ const updateConversationFromMessage = (conversation: Conversation, message: Mess
   lastMessagePreview: message.content,
   lastMessageAt: message.createdAt
 });
+
+const receiptsByConversation = (conversations: Conversation[]) =>
+  Object.fromEntries(
+    conversations.map((conversation) => [
+      conversation.conversationId,
+      Object.fromEntries((conversation.receipts ?? []).map((receipt) => [receipt.userId, receipt]))
+    ])
+  );
+
+const presenceByUser = (currentUser: User | undefined, conversations: Conversation[]) => {
+  const entries = conversations.flatMap((conversation) =>
+    conversation.participants.map((participant) => [
+      participant.userId,
+      {
+        userId: participant.userId,
+        onlineStatus: participant.onlineStatus ?? "offline",
+        lastSeenAt: participant.lastSeenAt ?? null,
+        lastHeartbeatAt: participant.lastHeartbeatAt ?? null
+      } satisfies UserPresence
+    ] as const)
+  );
+
+  if (currentUser) {
+    entries.push([
+      currentUser.userId,
+      {
+        userId: currentUser.userId,
+        onlineStatus: currentUser.onlineStatus ?? "offline",
+        lastSeenAt: currentUser.lastSeenAt ?? null,
+        lastHeartbeatAt: currentUser.lastHeartbeatAt ?? null
+      }
+    ]);
+  }
+
+  return Object.fromEntries(entries);
+};
 
 const dedupeMessages = (messages: Message[]) =>
   Array.from(new Map(messages.map((message) => [message.messageId, message])).values()).sort(
@@ -250,6 +292,14 @@ export const sendChatMessage = createAsyncThunk(
   }
 );
 
+export const markConversationReadOnServer = createAsyncThunk("chat/markConversationReadOnServer", async (conversationId: string) => {
+  return markConversationRead(conversationId);
+});
+
+export const setPresence = createAsyncThunk("chat/setPresence", async (online: boolean) => {
+  return updatePresence(online);
+});
+
 const chatSlice = createSlice({
   name: "chat",
   initialState,
@@ -295,6 +345,61 @@ const chatSlice = createSlice({
           new Set([...(state.seenMessageIdsByConversationId[message.conversationId] ?? []), message.messageId])
         );
       }
+    },
+    receiptUpdated(state, action: PayloadAction<ConversationReceipt>) {
+      const receipt = action.payload;
+      state.receiptsByConversationId[receipt.conversationId] = {
+        ...(state.receiptsByConversationId[receipt.conversationId] ?? {}),
+        [receipt.userId]: receipt
+      };
+
+      state.conversations = state.conversations.map((conversation) =>
+        conversation.conversationId === receipt.conversationId
+          ? {
+              ...conversation,
+              receipts: [
+                ...(conversation.receipts ?? []).filter((item) => item.userId !== receipt.userId),
+                receipt
+              ]
+            }
+          : conversation
+      );
+      if (state.selectedConversation?.conversationId === receipt.conversationId) {
+        state.selectedConversation = {
+          ...state.selectedConversation,
+          receipts: [
+            ...(state.selectedConversation.receipts ?? []).filter((item) => item.userId !== receipt.userId),
+            receipt
+          ]
+        };
+      }
+    },
+    presenceUpdated(state, action: PayloadAction<UserPresence>) {
+      const presence = action.payload;
+      state.userPresenceById[presence.userId] = presence;
+      const applyPresence = (user: User) =>
+        user.userId === presence.userId
+          ? {
+              ...user,
+              onlineStatus: presence.onlineStatus,
+              lastSeenAt: presence.lastSeenAt ?? null,
+              lastHeartbeatAt: presence.lastHeartbeatAt ?? null
+            }
+          : user;
+
+      state.conversations = state.conversations.map((conversation) => ({
+        ...conversation,
+        participants: conversation.participants.map(applyPresence)
+      }));
+      if (state.selectedConversation) {
+        state.selectedConversation = {
+          ...state.selectedConversation,
+          participants: state.selectedConversation.participants.map(applyPresence)
+        };
+      }
+      if (state.currentUser?.userId === presence.userId) {
+        state.currentUser = applyPresence(state.currentUser);
+      }
     }
   },
   extraReducers: (builder) => {
@@ -308,6 +413,8 @@ const chatSlice = createSlice({
         state.conversationsInitialized = true;
         state.currentUser = action.payload.currentUser;
         state.conversations = dedupeConversations(action.payload.conversations);
+        state.receiptsByConversationId = receiptsByConversation(action.payload.conversations);
+        state.userPresenceById = presenceByUser(action.payload.currentUser, action.payload.conversations);
         state.messagesByConversationId = Object.fromEntries(
           Object.entries(action.payload.messagesByConversationId).map(([conversationId, messages]) => [conversationId, dedupeMessages(messages)])
         );
@@ -326,6 +433,14 @@ const chatSlice = createSlice({
       .addCase(loadMoreConversations.fulfilled, (state, action) => {
         state.loadingMoreConversations = false;
         state.conversations = dedupeConversations([...state.conversations, ...action.payload.conversations]);
+        state.receiptsByConversationId = {
+          ...state.receiptsByConversationId,
+          ...receiptsByConversation(action.payload.conversations)
+        };
+        state.userPresenceById = {
+          ...state.userPresenceById,
+          ...presenceByUser(state.currentUser, action.payload.conversations)
+        };
         state.nextConversationToken = action.payload.nextToken;
       })
       .addCase(loadMoreConversations.rejected, (state) => {
@@ -334,6 +449,14 @@ const chatSlice = createSlice({
       })
       .addCase(refreshChatSnapshot.fulfilled, (state, action) => {
         state.conversations = dedupeConversations(action.payload.conversations);
+        state.receiptsByConversationId = {
+          ...state.receiptsByConversationId,
+          ...receiptsByConversation(action.payload.conversations)
+        };
+        state.userPresenceById = {
+          ...state.userPresenceById,
+          ...presenceByUser(state.currentUser, action.payload.conversations)
+        };
 
         for (const [conversationId, messages] of Object.entries(action.payload.messagesByConversationId)) {
           const existing = state.messagesByConversationId[conversationId] ?? [];
@@ -368,6 +491,14 @@ const chatSlice = createSlice({
         state.creatingConversation = false;
         state.conversations = dedupeConversations([action.payload, ...state.conversations]);
         state.selectedConversation = action.payload;
+        state.receiptsByConversationId = {
+          ...state.receiptsByConversationId,
+          ...receiptsByConversation([action.payload])
+        };
+        state.userPresenceById = {
+          ...state.userPresenceById,
+          ...presenceByUser(state.currentUser, [action.payload])
+        };
       })
       .addCase(createConversationByEmail.rejected, (state, action) => {
         state.creatingConversation = false;
@@ -383,6 +514,14 @@ const chatSlice = createSlice({
         state.openingConversationId = undefined;
         state.selectedConversation = action.payload.conversation;
         state.conversations = upsertConversation(state.conversations, action.payload.conversation);
+        state.receiptsByConversationId[action.payload.conversation.conversationId] = {
+          ...(state.receiptsByConversationId[action.payload.conversation.conversationId] ?? {}),
+          ...(receiptsByConversation([action.payload.conversation])[action.payload.conversation.conversationId] ?? {})
+        };
+        state.userPresenceById = {
+          ...state.userPresenceById,
+          ...presenceByUser(state.currentUser, [action.payload.conversation])
+        };
         state.messagesByConversationId[action.payload.conversation.conversationId] = dedupeMessages(action.payload.messages);
         state.messageNextTokens[action.payload.conversation.conversationId] = action.payload.nextToken;
         state.messageThreadsInitialized[action.payload.conversation.conversationId] = true;
@@ -472,9 +611,36 @@ const chatSlice = createSlice({
           );
         }
         state.error = "Could not send that message.";
+      })
+      .addCase(markConversationReadOnServer.fulfilled, (state, action) => {
+        const receipt = action.payload;
+        state.receiptsByConversationId[receipt.conversationId] = {
+          ...(state.receiptsByConversationId[receipt.conversationId] ?? {}),
+          [receipt.userId]: receipt
+        };
+      })
+      .addCase(setPresence.fulfilled, (state, action) => {
+        const presence = action.payload;
+        state.userPresenceById[presence.userId] = presence;
+        if (state.currentUser?.userId === presence.userId) {
+          state.currentUser = {
+            ...state.currentUser,
+            onlineStatus: presence.onlineStatus,
+            lastSeenAt: presence.lastSeenAt ?? null,
+            lastHeartbeatAt: presence.lastHeartbeatAt ?? null
+          };
+        }
       });
   }
 });
 
-export const { archiveConversation, clearChatError, markConversationSeen, messageReceived, unarchiveConversation } = chatSlice.actions;
+export const {
+  archiveConversation,
+  clearChatError,
+  markConversationSeen,
+  messageReceived,
+  presenceUpdated,
+  receiptUpdated,
+  unarchiveConversation
+} = chatSlice.actions;
 export default chatSlice.reducer;

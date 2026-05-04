@@ -3,6 +3,9 @@ export type User = {
   displayName: string;
   email?: string | null;
   avatarUrl?: string | null;
+  onlineStatus?: "online" | "offline";
+  lastSeenAt?: string | null;
+  lastHeartbeatAt?: string | null;
 };
 
 export type Conversation = {
@@ -10,6 +13,7 @@ export type Conversation = {
   participants: User[];
   lastMessagePreview?: string | null;
   lastMessageAt?: string | null;
+  receipts?: ConversationReceipt[];
 };
 
 export type Message = {
@@ -18,8 +22,22 @@ export type Message = {
   senderId: string;
   content: string;
   createdAt: string;
-  deliveryStatus?: "sending" | "sent" | "seen" | "failed";
+  deliveryStatus?: "sending" | "sent" | "delivered" | "seen" | "failed";
   clientRequestId?: string;
+};
+
+export type ConversationReceipt = {
+  conversationId: string;
+  userId: string;
+  deliveredAt?: string | null;
+  readAt?: string | null;
+};
+
+export type UserPresence = {
+  userId: string;
+  onlineStatus: "online" | "offline";
+  lastSeenAt?: string | null;
+  lastHeartbeatAt?: string | null;
 };
 
 export type Paginated<T> = {

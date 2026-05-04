@@ -19,6 +19,7 @@ import {
   initializeChat,
   loadMoreConversations,
   loadOlderMessages,
+  markConversationReadOnServer,
   markConversationSeen,
   openConversation,
   sendChatMessage
@@ -49,10 +50,11 @@ export default function ConversationPage() {
     messagesLoading,
     loadingOlderMessages,
     seenMessageIdsByConversationId,
+    receiptsByConversationId,
     error
   } = useAppSelector((state) => state.chat);
 
-  const messages = messagesByConversationId[conversationId] ?? [];
+  const messages = useMemo(() => messagesByConversationId[conversationId] ?? [], [conversationId, messagesByConversationId]);
   const activeConversations = conversations.filter((conversation) => !archivedConversationIds.includes(conversation.conversationId));
   const nextToken = messageNextTokens[conversationId];
   const visibleParticipants = selectedConversation?.participants.filter((participant) => participant.userId !== currentUser?.userId) ?? [];
@@ -62,6 +64,15 @@ export default function ConversationPage() {
     .join(", ");
   const title = chatPartnerNames || selectedConversation?.participants.map((participant) => participant.displayName).join(", ") || "Chat";
   const avatarUser = titleParticipants[0];
+  const peerReceipt = visibleParticipants[0]?.userId
+    ? receiptsByConversationId[conversationId]?.[visibleParticipants[0].userId]
+    : undefined;
+  const peerStatus =
+    avatarUser?.onlineStatus === "online"
+      ? "Online"
+      : avatarUser?.lastSeenAt
+        ? `Last seen ${new Date(avatarUser.lastSeenAt).toLocaleString()}`
+        : "Offline";
 
   useEffect(() => {
     let cancelled = false;
@@ -94,7 +105,10 @@ export default function ConversationPage() {
 
   useEffect(() => {
     dispatch(markConversationSeen(conversationId));
-  }, [conversationId, dispatch, messages.length]);
+    if (messages.some((message) => message.senderId !== currentUser?.userId)) {
+      dispatch(markConversationReadOnServer(conversationId)).catch(() => undefined);
+    }
+  }, [conversationId, currentUser?.userId, dispatch, messages]);
 
   const onSend = async (content: string) => {
     try {
@@ -147,7 +161,9 @@ export default function ConversationPage() {
             <Avatar user={avatarUser} label={title} />
             <div className="chat-detail-title-text">
               <div className="chat-detail-name">{title}</div>
-              <div className="chat-detail-status">Conversation</div>
+              <div className={`chat-detail-status ${avatarUser?.onlineStatus === "online" ? "presence-online-text" : ""}`}>
+                {peerStatus}
+              </div>
             </div>
           </div>
         </header>
@@ -170,6 +186,7 @@ export default function ConversationPage() {
           participants={selectedConversation?.participants}
           loading={initialMessagesLoading || messagesLoading}
           seenMessageIds={seenMessageIdsByConversationId[conversationId] ?? []}
+          peerReceipt={peerReceipt}
           fullHeight
         />
         </div>

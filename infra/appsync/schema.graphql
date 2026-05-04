@@ -4,6 +4,9 @@ type User {
   userId: ID!
   displayName: String!
   avatarUrl: String
+  onlineStatus: String!
+  lastSeenAt: AWSDateTime
+  lastHeartbeatAt: AWSDateTime
 }
 
 type Conversation {
@@ -11,6 +14,7 @@ type Conversation {
   participants: [User!]!
   lastMessagePreview: String
   lastMessageAt: AWSDateTime
+  receipts: [ConversationReceipt!]!
 }
 
 type Message {
@@ -19,6 +23,20 @@ type Message {
   senderId: ID!
   content: String!
   createdAt: AWSDateTime!
+}
+
+type ConversationReceipt {
+  conversationId: ID!
+  userId: ID!
+  deliveredAt: AWSDateTime
+  readAt: AWSDateTime
+}
+
+type UserPresence {
+  userId: ID!
+  onlineStatus: String!
+  lastSeenAt: AWSDateTime
+  lastHeartbeatAt: AWSDateTime
 }
 
 type ConversationConnection {
@@ -46,9 +64,16 @@ type Query {
 type Mutation {
   startConversation(otherUserId: ID!): Conversation!
   sendMessage(conversationId: ID!, content: String!): Message!
+  markConversationDelivered(conversationId: ID!): ConversationReceipt!
+  markConversationRead(conversationId: ID!): ConversationReceipt!
+  updatePresence(online: Boolean!): UserPresence!
 }
 
 type Subscription {
   onMessageSent(conversationId: ID!): Message
     @aws_subscribe(mutations: ["sendMessage"])
+  onConversationReceiptUpdated(conversationId: ID!): ConversationReceipt
+    @aws_subscribe(mutations: ["markConversationDelivered", "markConversationRead"])
+  onPresenceChanged(userId: ID!): UserPresence
+    @aws_subscribe(mutations: ["updatePresence"])
 }

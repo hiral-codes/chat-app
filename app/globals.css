@@ -303,6 +303,11 @@ input:disabled {
   font-size: 13px;
 }
 
+.presence-online-text {
+  color: #0f766e;
+  font-weight: 650;
+}
+
 .chat-detail-body {
   min-height: 0;
   display: grid;
@@ -537,6 +542,30 @@ input:disabled {
 .conversation-preview-unread {
   color: #172033;
   font-weight: 650;
+}
+
+.conversation-presence {
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.conversation-presence-online {
+  color: #0f766e;
+  font-weight: 650;
+}
+
+.presence-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .message-list-shell {
