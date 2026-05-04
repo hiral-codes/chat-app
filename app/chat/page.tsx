@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { RequireAuth } from "@/components/auth/RequireAuth";
 import { ChatListColumn } from "@/components/chat/ChatListColumn";
 import { AppShell } from "@/components/layout/AppShell";
 import { GlassAlert, GlassButton, GlassModal } from "@/components/ui/Glass";
@@ -53,46 +54,48 @@ export default function ChatInboxPage() {
   };
 
   return (
-    <AppShell>
-      <main className="chat-workspace chat-workspace-inbox">
-        <ChatListColumn
-          conversations={activeConversations}
-          currentUserId={currentUser?.userId}
-          loading={conversationsLoading}
-          loadingMore={loadingMoreConversations}
-          hasMore={Boolean(nextConversationToken)}
-          archivedConversationIds={archivedConversationIds}
-          unreadCountsByConversationId={unreadCountsByConversationId}
-          onArchive={(conversationId) => dispatch(archiveConversation(conversationId))}
-          onLoadMore={() => dispatch(loadMoreConversations())}
-          onCompose={() => setComposeOpen(true)}
-        />
-        <section className="chat-empty-detail" aria-label="Chat detail">
-          {error && error !== "Unauthenticated" ? <GlassAlert tone="danger">{error}</GlassAlert> : null}
-          <div>
-            <h2>Select a chat</h2>
-            <p className="muted-copy">Choose a conversation from the list to open messages here.</p>
-          </div>
-        </section>
-      </main>
-      <GlassModal open={composeOpen} title="New conversation" onClose={() => setComposeOpen(false)}>
-        <form className="modal-form" onSubmit={createConversation}>
-          <label>
-            Email address
-            <input
-              value={peerEmail}
-              onChange={(event) => setPeerEmail(event.target.value)}
-              placeholder="friend@example.com"
-              type="email"
-              disabled={creatingConversation}
-              autoFocus
-            />
-          </label>
-          <GlassButton type="submit" variant="primary" disabled={creatingConversation || !peerEmail.trim()}>
-            {creatingConversation ? "Starting..." : "Start chat"}
-          </GlassButton>
-        </form>
-      </GlassModal>
-    </AppShell>
+    <RequireAuth>
+      <AppShell>
+        <main className="chat-workspace chat-workspace-inbox">
+          <ChatListColumn
+            conversations={activeConversations}
+            currentUserId={currentUser?.userId}
+            loading={conversationsLoading}
+            loadingMore={loadingMoreConversations}
+            hasMore={Boolean(nextConversationToken)}
+            archivedConversationIds={archivedConversationIds}
+            unreadCountsByConversationId={unreadCountsByConversationId}
+            onArchive={(conversationId) => dispatch(archiveConversation(conversationId))}
+            onLoadMore={() => dispatch(loadMoreConversations())}
+            onCompose={() => setComposeOpen(true)}
+          />
+          <section className="chat-empty-detail" aria-label="Chat detail">
+            {error && error !== "Unauthenticated" ? <GlassAlert tone="danger">{error}</GlassAlert> : null}
+            <div>
+              <h2>Select a chat</h2>
+              <p className="muted-copy">Choose a conversation from the list to open messages here.</p>
+            </div>
+          </section>
+        </main>
+        <GlassModal open={composeOpen} title="New conversation" onClose={() => setComposeOpen(false)}>
+          <form className="modal-form" onSubmit={createConversation}>
+            <label>
+              Email address
+              <input
+                value={peerEmail}
+                onChange={(event) => setPeerEmail(event.target.value)}
+                placeholder="friend@example.com"
+                type="email"
+                disabled={creatingConversation}
+                autoFocus
+              />
+            </label>
+            <GlassButton type="submit" variant="primary" disabled={creatingConversation || !peerEmail.trim()}>
+              {creatingConversation ? "Starting..." : "Start chat"}
+            </GlassButton>
+          </form>
+        </GlassModal>
+      </AppShell>
+    </RequireAuth>
   );
 }

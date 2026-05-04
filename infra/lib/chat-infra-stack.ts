@@ -8,9 +8,28 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambdaNode from "aws-cdk-lib/aws-lambda-nodejs";
 import { Construct } from "constructs";
 
+const urlsFromConfig = (value: unknown, fallback: string[]) => {
+  if (typeof value !== "string") return fallback;
+
+  const urls = value
+    .split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
+
+  return urls.length ? urls : fallback;
+};
+
 export class ChatInfraStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+    const callbackUrls = urlsFromConfig(
+      this.node.tryGetContext("callbackUrls") ?? process.env.COGNITO_CALLBACK_URLS,
+      ["http://localhost:3000/api/auth/callback"]
+    );
+    const logoutUrls = urlsFromConfig(
+      this.node.tryGetContext("logoutUrls") ?? process.env.COGNITO_LOGOUT_URLS,
+      ["http://localhost:3000/login"]
+    );
 
     const userPool = new cognito.UserPool(this, "ChatUserPool", {
       selfSignUpEnabled: false,
@@ -24,8 +43,8 @@ export class ChatInfraStack extends cdk.Stack {
     const userPoolClient = new cognito.UserPoolClient(this, "ChatUserPoolClient", {
       userPool,
       oAuth: {
-        callbackUrls: ["http://localhost:3000/api/auth/callback"],
-        logoutUrls: ["http://localhost:3000/login"],
+        callbackUrls,
+        logoutUrls,
         flows: { authorizationCodeGrant: true }
       },
       generateSecret: false

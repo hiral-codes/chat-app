@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { signOut } from "aws-amplify/auth";
+import { RequireAuth } from "@/components/auth/RequireAuth";
 import { Avatar } from "@/components/chat/Avatar";
 import { AppShell } from "@/components/layout/AppShell";
 import { GlassButton, GlassPanel } from "@/components/ui/Glass";
@@ -24,37 +25,39 @@ export default function ProfilePage() {
   }, [dispatch]);
 
   return (
-    <AppShell>
-      <main className="page-stack">
-        <GlassPanel>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <Avatar user={currentUser} size={72} />
-            <div style={{ minWidth: 0 }}>
-              <h1 style={{ margin: 0 }}>{currentUser?.displayName ?? "Profile"}</h1>
-              <p className="muted-copy">{currentUser?.userId ?? "Signed-in user settings"}</p>
+    <RequireAuth>
+      <AppShell>
+        <main className="page-stack">
+          <GlassPanel>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <Avatar user={currentUser} size={72} />
+              <div style={{ minWidth: 0 }}>
+                <h1 style={{ margin: 0 }}>{currentUser?.displayName ?? "Profile"}</h1>
+                <p className="muted-copy">{currentUser?.userId ?? "Signed-in user settings"}</p>
+              </div>
             </div>
-          </div>
-        </GlassPanel>
+          </GlassPanel>
 
-        <GlassPanel>
-          <h2 style={{ marginTop: 0 }}>Settings</h2>
-          <div className="settings-grid">
-            <label>
-              Display name
-              <input value={currentUser?.displayName ?? ""} readOnly />
-            </label>
-            <label>
-              Avatar URL
-              <input value={currentUser?.avatarUrl ?? ""} readOnly placeholder="No avatar configured" />
-            </label>
-          </div>
-          <div style={{ marginTop: 16 }}>
-            <GlassButton variant="danger" onClick={() => signOut()}>
-              Logout
-            </GlassButton>
-          </div>
-        </GlassPanel>
-      </main>
-    </AppShell>
+          <GlassPanel>
+            <h2 style={{ marginTop: 0 }}>Settings</h2>
+            <div className="settings-grid">
+              <label>
+                Display name
+                <input value={currentUser?.displayName ?? ""} readOnly />
+              </label>
+              <label>
+                Avatar URL
+                <input value={currentUser?.avatarUrl ?? ""} readOnly placeholder="No avatar configured" />
+              </label>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <GlassButton variant="danger" onClick={() => signOut()}>
+                Logout
+              </GlassButton>
+            </div>
+          </GlassPanel>
+        </main>
+      </AppShell>
+    </RequireAuth>
   );
 }

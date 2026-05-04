@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { RequireAuth } from "@/components/auth/RequireAuth";
 import { ConversationList } from "@/components/chat/ConversationList";
 import { AppShell } from "@/components/layout/AppShell";
 import { GlassAlert, GlassPanel } from "@/components/ui/Glass";
@@ -24,27 +25,29 @@ export default function ArchivedPage() {
   }, [dispatch]);
 
   return (
-    <AppShell>
-      <main className="page-stack">
-        <GlassPanel>
-          <h1 style={{ margin: 0 }}>Archived</h1>
-          <p className="muted-copy">Chats you move out of the main inbox live here.</p>
-        </GlassPanel>
+    <RequireAuth>
+      <AppShell>
+        <main className="page-stack">
+          <GlassPanel>
+            <h1 style={{ margin: 0 }}>Archived</h1>
+            <p className="muted-copy">Chats you move out of the main inbox live here.</p>
+          </GlassPanel>
 
-        {error && error !== "Unauthenticated" ? <GlassAlert tone="danger">{error}</GlassAlert> : null}
+          {error && error !== "Unauthenticated" ? <GlassAlert tone="danger">{error}</GlassAlert> : null}
 
-        <GlassPanel>
-          <ConversationList
-            conversations={archivedConversations}
-            currentUserId={currentUser?.userId}
-            loading={conversationsLoading}
-            unreadCountsByConversationId={unreadCountsByConversationId}
-            mode="archived"
-            emptyText="No archived chats."
-            onUnarchive={(conversationId) => dispatch(unarchiveConversation(conversationId))}
-          />
-        </GlassPanel>
-      </main>
-    </AppShell>
+          <GlassPanel>
+            <ConversationList
+              conversations={archivedConversations}
+              currentUserId={currentUser?.userId}
+              loading={conversationsLoading}
+              unreadCountsByConversationId={unreadCountsByConversationId}
+              mode="archived"
+              emptyText="No archived chats."
+              onUnarchive={(conversationId) => dispatch(unarchiveConversation(conversationId))}
+            />
+          </GlassPanel>
+        </main>
+      </AppShell>
+    </RequireAuth>
   );
 }
