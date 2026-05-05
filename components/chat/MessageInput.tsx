@@ -12,6 +12,7 @@ const typingRepeatMs = 3000;
 
 export function MessageInput({ onSend, onTypingChange }: Props) {
   const [value, setValue] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const typingSentRef = useRef(false);
   const lastTypingSentAtRef = useRef(0);
   const typingIdleTimeoutRef = useRef<number | undefined>(undefined);
@@ -71,7 +72,13 @@ export function MessageInput({ onSend, onTypingChange }: Props) {
     setValue("");
     clearTypingIdleTimeout();
     sendTypingState(false, true);
-    await onSend(trimmed);
+    inputRef.current?.focus();
+
+    try {
+      await onSend(trimmed);
+    } finally {
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
   };
 
   useEffect(() => {
@@ -84,6 +91,7 @@ export function MessageInput({ onSend, onTypingChange }: Props) {
   return (
     <form onSubmit={onSubmit} className="message-input-form">
       <input
+        ref={inputRef}
         value={value}
         onChange={onChange}
         placeholder="Type a message"
