@@ -1,7 +1,7 @@
 "use client";
 
 import { ConversationList } from "@/components/chat/ConversationList";
-import { Conversation } from "@/lib/types/chat";
+import { Conversation, User } from "@/lib/types/chat";
 
 type Props = {
   conversations: Conversation[];
@@ -16,6 +16,7 @@ type Props = {
   onArchive: (conversationId: string) => void;
   onLoadMore: () => void;
   onCompose: () => void;
+  onViewParticipant?: (participant: User) => void;
 };
 
 export function ChatListColumn({
@@ -30,7 +31,8 @@ export function ChatListColumn({
   typingNamesByConversationId = {},
   onArchive,
   onLoadMore,
-  onCompose
+  onCompose,
+  onViewParticipant
 }: Props) {
   return (
     <aside className="chat-list-column" aria-label="Chats">
@@ -57,6 +59,7 @@ export function ChatListColumn({
           unreadCountsByConversationId={unreadCountsByConversationId}
           typingNamesByConversationId={typingNamesByConversationId}
           onArchive={onArchive}
+          onViewParticipant={onViewParticipant}
         />
         {hasMore ? (
           <button className="chat-list-load-more" onClick={onLoadMore} disabled={loadingMore}>

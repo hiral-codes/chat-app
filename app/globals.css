@@ -40,6 +40,47 @@ input:disabled {
   border: 1px solid rgba(148, 163, 184, 0.24);
 }
 
+.loading-state {
+  min-height: 120px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #64748b;
+  font-weight: 650;
+}
+
+.loading-spinner,
+.button-spinner {
+  width: 22px;
+  height: 22px;
+  border: 3px solid rgba(15, 118, 110, 0.18);
+  border-top-color: #0f766e;
+  border-radius: 50%;
+  animation: spin 780ms linear infinite;
+}
+
+.button-loading-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.button-spinner {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+  border-color: rgba(255, 255, 255, 0.38);
+  border-top-color: #ffffff;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .app-shell {
   min-height: 100vh;
   min-height: 100dvh;
@@ -589,10 +630,12 @@ input:disabled {
 
 .message-list-loading {
   min-height: 0;
-  display: grid;
-  align-content: start;
-  gap: 10px;
+  height: 100%;
   padding: 8px 4px;
+}
+
+.conversation-loading-state {
+  width: 100%;
 }
 
 .message-list-scroll {
@@ -872,6 +915,66 @@ input:disabled {
 
 .status-item p {
   margin: 0 0 8px;
+}
+
+.participant-profile {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+}
+
+.participant-profile-main {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.participant-profile-main h3 {
+  margin: 0;
+  color: #172033;
+  font-size: 22px;
+}
+
+.participant-profile-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.participant-profile-status-online {
+  color: #0f766e;
+}
+
+.participant-profile-grid {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+}
+
+.participant-profile-grid div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.58);
+  padding: 10px 12px;
+}
+
+.participant-profile-grid span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.participant-profile-grid strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #172033;
+  font-size: 13px;
 }
 
 .status-item span {

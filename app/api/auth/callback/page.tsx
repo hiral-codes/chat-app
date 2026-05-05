@@ -47,7 +47,10 @@ export default function AuthCallbackPage() {
 
   return (
     <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 16 }}>
-      <p style={{ color: "#94a3b8" }}>{message}</p>
+      <div className="loading-state" role="status" aria-live="polite">
+        <span className="loading-spinner" aria-hidden="true" />
+        <span>{message}</span>
+      </div>
     </main>
   );
 }

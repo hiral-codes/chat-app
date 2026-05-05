@@ -9,6 +9,7 @@ import { Avatar } from "@/components/chat/Avatar";
 import { ChatListColumn } from "@/components/chat/ChatListColumn";
 import { MessageInput } from "@/components/chat/MessageInput";
 import { MessageList } from "@/components/chat/MessageList";
+import { ParticipantDetailsModal } from "@/components/chat/ParticipantDetailsModal";
 import { AppShell } from "@/components/layout/AppShell";
 import { GlassAlert, GlassButton, GlassModal } from "@/components/ui/Glass";
 import { ensureAmplifyConfigured } from "@/lib/aws/amplify-config";
@@ -25,6 +26,7 @@ import {
   openConversation,
   sendChatMessage
 } from "@/lib/store/chatSlice";
+import { User } from "@/lib/types/chat";
 
 ensureAmplifyConfigured();
 
@@ -35,6 +37,7 @@ export default function ConversationPage() {
   const [initialMessagesLoading, setInitialMessagesLoading] = useState(true);
   const [peerEmail, setPeerEmail] = useState("");
   const [composeOpen, setComposeOpen] = useState(false);
+  const [profileParticipant, setProfileParticipant] = useState<User | undefined>(undefined);
   const dispatch = useAppDispatch();
   const {
     conversations,
@@ -181,6 +184,7 @@ export default function ConversationPage() {
           onArchive={(id) => dispatch(archiveConversation(id))}
           onLoadMore={() => dispatch(loadMoreConversations())}
           onCompose={() => setComposeOpen(true)}
+          onViewParticipant={setProfileParticipant}
         />
         <section className="chat-detail-panel">
         <header className="chat-detail-header">
@@ -190,7 +194,7 @@ export default function ConversationPage() {
             </svg>
           </Link>
           <div className="chat-detail-title">
-            <Avatar user={avatarUser} label={title} />
+            <Avatar user={avatarUser} label={title} onClick={avatarUser ? () => setProfileParticipant(avatarUser) : undefined} />
             <div className="chat-detail-title-text">
               <div className="chat-detail-name">{title}</div>
               <div className={`chat-detail-status ${avatarUser?.onlineStatus === "online" ? "presence-online-text" : ""}`}>
@@ -220,6 +224,7 @@ export default function ConversationPage() {
           seenMessageIds={seenMessageIdsByConversationId[conversationId] ?? []}
           peerReceipt={peerReceipt}
           typingNames={typingNames}
+          onViewParticipant={setProfileParticipant}
           fullHeight
         />
         </div>
@@ -248,6 +253,11 @@ export default function ConversationPage() {
           </GlassButton>
         </form>
       </GlassModal>
+      <ParticipantDetailsModal
+        open={Boolean(profileParticipant)}
+        participant={profileParticipant}
+        onClose={() => setProfileParticipant(undefined)}
+      />
       </AppShell>
     </RequireAuth>
   );

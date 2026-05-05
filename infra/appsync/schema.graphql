@@ -3,6 +3,7 @@ scalar AWSDateTime
 type User {
   userId: ID!
   displayName: String!
+  email: String
   avatarUrl: String
   onlineStatus: String!
   lastSeenAt: AWSDateTime

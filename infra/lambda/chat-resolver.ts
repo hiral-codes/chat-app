@@ -60,11 +60,13 @@ const onlineWindowMs = 60_000;
 const toUser = (
   id: string,
   displayName = id,
+  email: string | null = null,
   avatarUrl: string | null = null,
   presence: { onlineStatus?: string; lastSeenAt?: string | null; lastHeartbeatAt?: string | null } = {}
 ) => ({
   userId: id,
   displayName,
+  email,
   avatarUrl,
   onlineStatus: presence.onlineStatus === "online" ? "online" : "offline",
   lastSeenAt: presence.lastSeenAt ?? null,
@@ -88,7 +90,7 @@ const createUserProfileLoader = (): LoadUserProfile => {
 
 async function getUserProfile(userId: string) {
   const presence = await getUserPresence(userId);
-  if (!userPoolId) return toUser(userId, userId, null, presence);
+  if (!userPoolId) return toUser(userId, userId, null, null, presence);
 
   try {
     const result = await cognito.send(
@@ -100,10 +102,16 @@ async function getUserProfile(userId: string) {
     );
     const user = result.Users?.[0];
     const attributes = user?.Attributes ?? [];
-    return toUser(userId, displayNameFromAttributes(attributes, userId), attribute(attributes, "picture") ?? null, presence);
+    return toUser(
+      userId,
+      displayNameFromAttributes(attributes, userId),
+      attribute(attributes, "email") ?? null,
+      attribute(attributes, "picture") ?? null,
+      presence
+    );
   } catch (error) {
     console.warn("Unable to load user profile", { userId, error });
-    return toUser(userId, userId, null, presence);
+    return toUser(userId, userId, null, null, presence);
   }
 }
 
@@ -155,6 +163,7 @@ async function findUserByEmail(email: string) {
   return toUser(
     userId,
     displayNameFromAttributes(attributes, trimmedEmail),
+    attribute(attributes, "email") ?? trimmedEmail,
     attribute(attributes, "picture") ?? null,
     await getUserPresence(userId)
   );

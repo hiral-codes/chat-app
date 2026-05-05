@@ -13,6 +13,7 @@ type Props = {
   seenMessageIds?: string[];
   peerReceipt?: ConversationReceipt;
   typingNames?: string[];
+  onViewParticipant?: (participant: User) => void;
 };
 
 const bottomThreshold = 96;
@@ -50,7 +51,8 @@ export function MessageList({
   fullHeight = false,
   seenMessageIds = [],
   peerReceipt,
-  typingNames = []
+  typingNames = [],
+  onViewParticipant
 }: Props) {
   const participantById = new Map(participants.map((participant) => [participant.userId, participant]));
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -131,19 +133,9 @@ export function MessageList({
 
   if (loading) {
     return (
-      <div className="message-list-loading">
-        {[0, 1, 2, 3].map((item) => (
-          <div
-            key={item}
-            className="soft-skeleton"
-            style={{
-              height: item % 2 ? 62 : 48,
-              width: item % 2 ? "68%" : "52%",
-              marginLeft: item % 2 ? "auto" : 0,
-              borderRadius: 8
-            }}
-          />
-        ))}
+      <div className="message-list-loading loading-state" role="status" aria-live="polite">
+        <span className="loading-spinner" aria-hidden="true" />
+        <span>Loading messages</span>
       </div>
     );
   }
@@ -168,7 +160,7 @@ export function MessageList({
               key={message.messageId}
               className={`message-row ${mine ? "message-row-mine" : ""}`}
             >
-              {!mine ? <Avatar user={sender} label={senderName} size={32} /> : null}
+              {!mine ? <Avatar user={sender} label={senderName} size={32} onClick={sender ? () => onViewParticipant?.(sender) : undefined} /> : null}
               <div
                 className={`message-bubble ${mine ? "message-bubble-mine" : ""}`}
               >
@@ -191,7 +183,7 @@ export function MessageList({
                   ) : null}
                 </div>
               </div>
-              {mine ? <Avatar user={sender} label="You" size={32} /> : null}
+              {mine ? <Avatar user={sender} label="You" size={32} onClick={sender ? () => onViewParticipant?.(sender) : undefined} /> : null}
             </div>
           );
         })}

@@ -52,7 +52,14 @@ export default function LoginPage() {
           onClick={continueWithSocialLogin}
           style={{ width: "100%", padding: 12, borderRadius: 8, border: 0, background: "#2563eb", color: "white", cursor: "pointer" }}
         >
-          {isSigningIn ? "Continuing..." : "Continue with Social Login"}
+          {isSigningIn ? (
+            <span className="button-loading-content">
+              <span className="button-spinner" aria-hidden="true" />
+              Continuing
+            </span>
+          ) : (
+            "Continue with Social Login"
+          )}
         </button>
       </div>
     </main>

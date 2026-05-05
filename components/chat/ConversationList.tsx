@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Avatar } from "@/components/chat/Avatar";
-import { Conversation } from "@/lib/types/chat";
+import { Conversation, User } from "@/lib/types/chat";
 
 type Props = {
   conversations: Conversation[];
@@ -16,6 +16,7 @@ type Props = {
   emptyText?: string;
   onArchive?: (conversationId: string) => void;
   onUnarchive?: (conversationId: string) => void;
+  onViewParticipant?: (participant: User) => void;
 };
 
 const truncate = (value: string, maxLength: number) => {
@@ -58,14 +59,14 @@ export function ConversationList({
   mode = "active",
   emptyText = "No conversations yet. Start one with an email address.",
   onArchive,
-  onUnarchive
+  onUnarchive,
+  onViewParticipant
 }: Props) {
   if (loading) {
     return (
-      <div className="conversation-list">
-        {[0, 1, 2].map((item) => (
-          <div key={item} className="soft-skeleton" style={{ height: 72, borderRadius: 8 }} />
-        ))}
+      <div className="loading-state conversation-loading-state" role="status" aria-live="polite">
+        <span className="loading-spinner" aria-hidden="true" />
+        <span>Loading messages</span>
       </div>
     );
   }
@@ -107,7 +108,7 @@ export function ConversationList({
             className={`conversation-item ${selected ? "conversation-item-selected" : ""}`}
           >
             <Link href={`/chat/${conversation.conversationId}`} className="conversation-link">
-              <Avatar user={avatarUser} label={title} />
+              <Avatar user={avatarUser} label={title} onClick={avatarUser ? () => onViewParticipant?.(avatarUser) : undefined} />
               <div className="conversation-content">
                 <div className="conversation-title-row">
                   <div className="conversation-title" title={title}>

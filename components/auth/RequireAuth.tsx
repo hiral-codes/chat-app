@@ -35,7 +35,10 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   if (!isAuthenticated) {
     return (
       <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 16 }}>
-        <p style={{ color: "#94a3b8" }}>Checking sign in...</p>
+        <div className="loading-state" role="status" aria-live="polite">
+          <span className="loading-spinner" aria-hidden="true" />
+          <span>Checking sign in</span>
+        </div>
       </main>
     );
   }

@@ -187,6 +187,7 @@ const authUser = async (): Promise<User> => {
   return {
     userId: user.userId,
     displayName,
+    email,
     avatarUrl: picture
   };
 };
@@ -308,6 +309,9 @@ const chatSlice = createSlice({
   reducers: {
     clearChatError(state) {
       state.error = "";
+    },
+    clearSelectedConversation(state) {
+      state.selectedConversation = undefined;
     },
     archiveConversation(state, action: PayloadAction<string>) {
       if (!state.archivedConversationIds.includes(action.payload)) {
@@ -646,6 +650,7 @@ const chatSlice = createSlice({
 export const {
   archiveConversation,
   clearChatError,
+  clearSelectedConversation,
   markConversationSeen,
   messageReceived,
   presenceUpdated,

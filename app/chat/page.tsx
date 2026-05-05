@@ -4,11 +4,19 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { ChatListColumn } from "@/components/chat/ChatListColumn";
+import { ParticipantDetailsModal } from "@/components/chat/ParticipantDetailsModal";
 import { AppShell } from "@/components/layout/AppShell";
 import { GlassAlert, GlassButton, GlassModal } from "@/components/ui/Glass";
 import { ensureAmplifyConfigured } from "@/lib/aws/amplify-config";
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
-import { archiveConversation, createConversationByEmail, initializeChat, loadMoreConversations } from "@/lib/store/chatSlice";
+import {
+  archiveConversation,
+  clearSelectedConversation,
+  createConversationByEmail,
+  initializeChat,
+  loadMoreConversations
+} from "@/lib/store/chatSlice";
+import { User } from "@/lib/types/chat";
 
 ensureAmplifyConfigured();
 
@@ -17,6 +25,7 @@ export default function ChatInboxPage() {
   const router = useRouter();
   const [peerEmail, setPeerEmail] = useState("");
   const [composeOpen, setComposeOpen] = useState(false);
+  const [profileParticipant, setProfileParticipant] = useState<User | undefined>(undefined);
   const {
     conversations,
     archivedConversationIds,
@@ -48,6 +57,7 @@ export default function ChatInboxPage() {
   );
 
   useEffect(() => {
+    dispatch(clearSelectedConversation());
     dispatch(initializeChat())
       .unwrap()
       .catch((reason) => {
@@ -86,6 +96,7 @@ export default function ChatInboxPage() {
             onArchive={(conversationId) => dispatch(archiveConversation(conversationId))}
             onLoadMore={() => dispatch(loadMoreConversations())}
             onCompose={() => setComposeOpen(true)}
+            onViewParticipant={setProfileParticipant}
           />
           <section className="chat-empty-detail" aria-label="Chat detail">
             {error && error !== "Unauthenticated" ? <GlassAlert tone="danger">{error}</GlassAlert> : null}
@@ -113,6 +124,11 @@ export default function ChatInboxPage() {
             </GlassButton>
           </form>
         </GlassModal>
+        <ParticipantDetailsModal
+          open={Boolean(profileParticipant)}
+          participant={profileParticipant}
+          onClose={() => setProfileParticipant(undefined)}
+        />
       </AppShell>
     </RequireAuth>
   );

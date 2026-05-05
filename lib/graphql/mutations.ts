@@ -7,6 +7,7 @@ export const startConversationMutation = /* GraphQL */ `
       participants {
         userId
         displayName
+        email
         avatarUrl
         onlineStatus
         lastSeenAt

@@ -8,6 +8,7 @@ export const listConversationsQuery = /* GraphQL */ `
         participants {
           userId
           displayName
+          email
           avatarUrl
           onlineStatus
           lastSeenAt
@@ -67,6 +68,7 @@ export const getConversationQuery = /* GraphQL */ `
       participants {
         userId
         displayName
+        email
         avatarUrl
         onlineStatus
         lastSeenAt
@@ -111,6 +113,7 @@ export const getConversationThreadQuery = /* GraphQL */ `
         participants {
           userId
           displayName
+          email
           avatarUrl
           onlineStatus
           lastSeenAt

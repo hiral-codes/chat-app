@@ -1,11 +1,13 @@
 "use client";
 
+import type { KeyboardEvent, MouseEvent } from "react";
 import { User } from "@/lib/types/chat";
 
 type Props = {
   user?: Pick<User, "displayName" | "avatarUrl">;
   label?: string;
   size?: number;
+  onClick?: () => void;
 };
 
 const initialsFor = (name: string) => {
@@ -14,9 +16,26 @@ const initialsFor = (name: string) => {
   return initials?.toUpperCase() || "?";
 };
 
-export function Avatar({ user, label, size = 40 }: Props) {
+export function Avatar({ user, label, size = 40, onClick }: Props) {
   const name = user?.displayName || label || "User";
   const avatarUrl = user?.avatarUrl || undefined;
+  const interactiveProps = onClick
+    ? {
+        role: "button",
+        tabIndex: 0,
+        onClick: (event: MouseEvent<HTMLSpanElement>) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onClick();
+        },
+        onKeyDown: (event: KeyboardEvent<HTMLSpanElement>) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          event.stopPropagation();
+          onClick();
+        }
+      }
+    : {};
 
   const baseStyle = {
     width: size,
@@ -31,8 +50,10 @@ export function Avatar({ user, label, size = 40 }: Props) {
       <span
         aria-label={`${name} avatar`}
         title={name}
+        {...interactiveProps}
         style={{
           ...baseStyle,
+          cursor: onClick ? "pointer" : undefined,
           display: "inline-block",
           backgroundColor: "#111827",
           backgroundImage: `url("${avatarUrl}")`,
@@ -48,8 +69,10 @@ export function Avatar({ user, label, size = 40 }: Props) {
     <span
       aria-label={`${name} avatar`}
       title={name}
+      {...interactiveProps}
       style={{
         ...baseStyle,
+        cursor: onClick ? "pointer" : undefined,
         display: "inline-grid",
         placeItems: "center",
         background: "linear-gradient(135deg, #2563eb, #0f766e)",
