@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { ChatListColumn } from "@/components/chat/ChatListColumn";
@@ -26,9 +26,26 @@ export default function ChatInboxPage() {
     conversationsLoading,
     creatingConversation,
     loadingMoreConversations,
+    typingByConversationId,
     error
   } = useAppSelector((state) => state.chat);
-  const activeConversations = conversations.filter((conversation) => !archivedConversationIds.includes(conversation.conversationId));
+  const activeConversations = useMemo(
+    () => conversations.filter((conversation) => !archivedConversationIds.includes(conversation.conversationId)),
+    [archivedConversationIds, conversations]
+  );
+  const typingNamesByConversationId = useMemo(
+    () =>
+      Object.fromEntries(
+        activeConversations.map((conversation) => {
+          const typingByUserId = typingByConversationId[conversation.conversationId] ?? {};
+          const names = conversation.participants
+            .filter((participant) => participant.userId !== currentUser?.userId && typingByUserId[participant.userId]?.isTyping)
+            .map((participant) => participant.displayName);
+          return [conversation.conversationId, names];
+        })
+      ),
+    [activeConversations, currentUser?.userId, typingByConversationId]
+  );
 
   useEffect(() => {
     dispatch(initializeChat())
@@ -65,6 +82,7 @@ export default function ChatInboxPage() {
             hasMore={Boolean(nextConversationToken)}
             archivedConversationIds={archivedConversationIds}
             unreadCountsByConversationId={unreadCountsByConversationId}
+            typingNamesByConversationId={typingNamesByConversationId}
             onArchive={(conversationId) => dispatch(archiveConversation(conversationId))}
             onLoadMore={() => dispatch(loadMoreConversations())}
             onCompose={() => setComposeOpen(true)}

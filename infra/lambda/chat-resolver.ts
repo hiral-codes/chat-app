@@ -276,7 +276,8 @@ async function startConversation(currentUserId: string, otherUserEmail: string) 
     conversationId,
     participants: await Promise.all(conversation.participantIds.map(getUserProfile)),
     lastMessagePreview: null,
-    lastMessageAt: createdAt
+    lastMessageAt: createdAt,
+    receipts: await Promise.all(conversation.participantIds.map((participantId) => getConversationReceipt(participantId, conversationId)))
   };
 }
 
@@ -536,6 +537,16 @@ async function updatePresence(currentUserId: string, online: boolean) {
   };
 }
 
+async function updateTyping(currentUserId: string, conversationId: string, isTyping: boolean) {
+  await getConversationMeta(currentUserId, conversationId);
+  return {
+    conversationId,
+    userId: currentUserId,
+    isTyping,
+    updatedAt: nowIso()
+  };
+}
+
 export const handler = async (event: AppSyncEvent) => {
   const userId = assertAuthed(event);
   const fieldName = event.fieldName ?? event.info?.fieldName;
@@ -573,9 +584,12 @@ export const handler = async (event: AppSyncEvent) => {
       return updateConversationReceipt(userId, String(event.arguments.conversationId), "lastReadAt");
     case "updatePresence":
       return updatePresence(userId, Boolean(event.arguments.online));
+    case "updateTyping":
+      return updateTyping(userId, String(event.arguments.conversationId), Boolean(event.arguments.isTyping));
     case "onMessageSent":
     case "onConversationReceiptUpdated":
     case "onPresenceChanged":
+    case "onTypingChanged":
       return null;
     default:
       throw new Error(`Unknown field ${fieldName}`);

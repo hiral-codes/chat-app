@@ -39,6 +39,13 @@ type UserPresence {
   lastHeartbeatAt: AWSDateTime
 }
 
+type TypingStatus {
+  conversationId: ID!
+  userId: ID!
+  isTyping: Boolean!
+  updatedAt: AWSDateTime!
+}
+
 type ConversationConnection {
   items: [Conversation!]!
   nextToken: String
@@ -67,6 +74,7 @@ type Mutation {
   markConversationDelivered(conversationId: ID!): ConversationReceipt!
   markConversationRead(conversationId: ID!): ConversationReceipt!
   updatePresence(online: Boolean!): UserPresence!
+  updateTyping(conversationId: ID!, isTyping: Boolean!): TypingStatus!
 }
 
 type Subscription {
@@ -76,4 +84,6 @@ type Subscription {
     @aws_subscribe(mutations: ["markConversationDelivered", "markConversationRead"])
   onPresenceChanged(userId: ID!): UserPresence
     @aws_subscribe(mutations: ["updatePresence"])
+  onTypingChanged(conversationId: ID!): TypingStatus
+    @aws_subscribe(mutations: ["updateTyping"])
 }

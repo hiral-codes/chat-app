@@ -7,7 +7,8 @@ import {
   sendMessageMutation,
   startConversationLegacyMutation,
   startConversationMutation,
-  updatePresenceMutation
+  updatePresenceMutation,
+  updateTypingMutation
 } from "@/lib/graphql/mutations";
 import {
   getConversationLegacyQuery,
@@ -21,9 +22,10 @@ import {
 import {
   onConversationReceiptUpdatedSubscription,
   onMessageSentSubscription,
-  onPresenceChangedSubscription
+  onPresenceChangedSubscription,
+  onTypingChangedSubscription
 } from "@/lib/graphql/subscriptions";
-import { Conversation, ConversationReceipt, ConversationThread, Message, Paginated, UserPresence } from "@/lib/types/chat";
+import { Conversation, ConversationReceipt, ConversationThread, Message, Paginated, TypingStatus, UserPresence } from "@/lib/types/chat";
 
 const errorMessages = (error: unknown): string[] => {
   if (error instanceof Error) return [error.message];
@@ -48,6 +50,7 @@ const isSchemaFieldUndefinedError = (error: unknown) =>
 
 let receiptSubscriptionsUnavailable = false;
 let presenceSubscriptionsUnavailable = false;
+let typingSubscriptionsUnavailable = false;
 const noop = () => undefined;
 
 export async function listConversations(limit = 20, nextToken?: string): Promise<Paginated<Conversation>> {
@@ -199,6 +202,14 @@ export async function updatePresence(online: boolean): Promise<UserPresence> {
   return result.data.updatePresence;
 }
 
+export async function updateTyping(conversationId: string, isTyping: boolean): Promise<TypingStatus> {
+  const result = (await appsyncClient.graphql({
+    query: updateTypingMutation,
+    variables: { conversationId, isTyping }
+  })) as { data: { updateTyping: TypingStatus } };
+  return result.data.updateTyping;
+}
+
 export function subscribeToMessages(conversationId: string, onMessage: (message: Message) => void) {
   const sub = (
     appsyncClient.graphql({
@@ -265,6 +276,31 @@ export function subscribeToPresence(userId: string, onPresence: (presence: UserP
           return;
         }
         console.error("presence subscription error", error);
+      }
+    });
+
+  return () => sub.unsubscribe();
+}
+
+export function subscribeToTyping(conversationId: string, onTyping: (typing: TypingStatus) => void) {
+  if (typingSubscriptionsUnavailable) return noop;
+
+  const sub = (
+    appsyncClient.graphql({
+      query: onTypingChangedSubscription,
+      variables: { conversationId }
+    }) as any
+  ).subscribe({
+      next: ({ data }: any) => {
+        const typing = data?.onTypingChanged as TypingStatus | undefined;
+        if (typing) onTyping(typing);
+      },
+      error: (error: unknown) => {
+        if (isSchemaFieldUndefinedError(error)) {
+          typingSubscriptionsUnavailable = true;
+          return;
+        }
+        console.error("typing subscription error", error);
       }
     });
 

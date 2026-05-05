@@ -40,6 +40,13 @@ export type UserPresence = {
   lastHeartbeatAt?: string | null;
 };
 
+export type TypingStatus = {
+  conversationId: string;
+  userId: string;
+  isTyping: boolean;
+  updatedAt: string;
+};
+
 export type Paginated<T> = {
   items: T[];
   nextToken?: string | null;

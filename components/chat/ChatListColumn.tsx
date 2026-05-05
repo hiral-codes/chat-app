@@ -12,6 +12,7 @@ type Props = {
   hasMore?: boolean;
   archivedConversationIds?: string[];
   unreadCountsByConversationId?: Record<string, number>;
+  typingNamesByConversationId?: Record<string, string[]>;
   onArchive: (conversationId: string) => void;
   onLoadMore: () => void;
   onCompose: () => void;
@@ -26,6 +27,7 @@ export function ChatListColumn({
   hasMore = false,
   archivedConversationIds = [],
   unreadCountsByConversationId = {},
+  typingNamesByConversationId = {},
   onArchive,
   onLoadMore,
   onCompose
@@ -53,6 +55,7 @@ export function ChatListColumn({
           loading={loading}
           archivedConversationIds={archivedConversationIds}
           unreadCountsByConversationId={unreadCountsByConversationId}
+          typingNamesByConversationId={typingNamesByConversationId}
           onArchive={onArchive}
         />
         {hasMore ? (

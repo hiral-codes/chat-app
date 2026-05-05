@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { fetchAuthSession } from "aws-amplify/auth";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { Avatar } from "@/components/chat/Avatar";
@@ -12,6 +12,7 @@ import { MessageList } from "@/components/chat/MessageList";
 import { AppShell } from "@/components/layout/AppShell";
 import { GlassAlert, GlassButton, GlassModal } from "@/components/ui/Glass";
 import { ensureAmplifyConfigured } from "@/lib/aws/amplify-config";
+import { updateTyping } from "@/lib/chat/api";
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
 import {
   archiveConversation,
@@ -51,13 +52,20 @@ export default function ConversationPage() {
     loadingOlderMessages,
     seenMessageIdsByConversationId,
     receiptsByConversationId,
+    typingByConversationId,
     error
   } = useAppSelector((state) => state.chat);
 
   const messages = useMemo(() => messagesByConversationId[conversationId] ?? [], [conversationId, messagesByConversationId]);
-  const activeConversations = conversations.filter((conversation) => !archivedConversationIds.includes(conversation.conversationId));
+  const activeConversations = useMemo(
+    () => conversations.filter((conversation) => !archivedConversationIds.includes(conversation.conversationId)),
+    [archivedConversationIds, conversations]
+  );
   const nextToken = messageNextTokens[conversationId];
-  const visibleParticipants = selectedConversation?.participants.filter((participant) => participant.userId !== currentUser?.userId) ?? [];
+  const visibleParticipants = useMemo(
+    () => selectedConversation?.participants.filter((participant) => participant.userId !== currentUser?.userId) ?? [],
+    [currentUser?.userId, selectedConversation?.participants]
+  );
   const titleParticipants = visibleParticipants.length ? visibleParticipants : selectedConversation?.participants ?? [];
   const chatPartnerNames = visibleParticipants
     .map((participant) => participant.displayName)
@@ -67,6 +75,25 @@ export default function ConversationPage() {
   const peerReceipt = visibleParticipants[0]?.userId
     ? receiptsByConversationId[conversationId]?.[visibleParticipants[0].userId]
     : undefined;
+  const typingNames = useMemo(() => {
+    const typingByUserId = typingByConversationId[conversationId] ?? {};
+    return visibleParticipants
+      .filter((participant) => typingByUserId[participant.userId]?.isTyping)
+      .map((participant) => participant.displayName);
+  }, [conversationId, typingByConversationId, visibleParticipants]);
+  const typingNamesByConversationId = useMemo(
+    () =>
+      Object.fromEntries(
+        activeConversations.map((conversation) => {
+          const typingByUserId = typingByConversationId[conversation.conversationId] ?? {};
+          const names = conversation.participants
+            .filter((participant) => participant.userId !== currentUser?.userId && typingByUserId[participant.userId]?.isTyping)
+            .map((participant) => participant.displayName);
+          return [conversation.conversationId, names];
+        })
+      ),
+    [activeConversations, currentUser?.userId, typingByConversationId]
+  );
   const peerStatus =
     avatarUser?.onlineStatus === "online"
       ? "Online"
@@ -118,6 +145,10 @@ export default function ConversationPage() {
     }
   };
 
+  const onTypingChange = useCallback((isTyping: boolean) => {
+    updateTyping(conversationId, isTyping).catch(() => undefined);
+  }, [conversationId]);
+
   const createConversation = async (event: FormEvent) => {
     event.preventDefault();
     const email = peerEmail.trim();
@@ -146,6 +177,7 @@ export default function ConversationPage() {
           hasMore={Boolean(nextConversationToken)}
           archivedConversationIds={archivedConversationIds}
           unreadCountsByConversationId={unreadCountsByConversationId}
+          typingNamesByConversationId={typingNamesByConversationId}
           onArchive={(id) => dispatch(archiveConversation(id))}
           onLoadMore={() => dispatch(loadMoreConversations())}
           onCompose={() => setComposeOpen(true)}
@@ -187,13 +219,14 @@ export default function ConversationPage() {
           loading={initialMessagesLoading || messagesLoading}
           seenMessageIds={seenMessageIdsByConversationId[conversationId] ?? []}
           peerReceipt={peerReceipt}
+          typingNames={typingNames}
           fullHeight
         />
         </div>
         </div>
 
         <footer className="chat-detail-composer">
-          <MessageInput onSend={onSend} />
+          <MessageInput onSend={onSend} onTypingChange={onTypingChange} />
         </footer>
         </section>
       </main>

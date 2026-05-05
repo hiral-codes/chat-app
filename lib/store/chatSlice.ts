@@ -11,7 +11,7 @@ import {
   startConversation,
   updatePresence
 } from "@/lib/chat/api";
-import { Conversation, ConversationReceipt, Message, User, UserPresence } from "@/lib/types/chat";
+import { Conversation, ConversationReceipt, Message, TypingStatus, User, UserPresence } from "@/lib/types/chat";
 
 type ChatState = {
   currentUser?: User;
@@ -21,6 +21,7 @@ type ChatState = {
   seenMessageIdsByConversationId: Record<string, string[]>;
   receiptsByConversationId: Record<string, Record<string, ConversationReceipt>>;
   userPresenceById: Record<string, UserPresence>;
+  typingByConversationId: Record<string, Record<string, TypingStatus>>;
   nextConversationToken: string | null;
   selectedConversation?: Conversation;
   messagesByConversationId: Record<string, Message[]>;
@@ -45,6 +46,7 @@ const initialState: ChatState = {
   seenMessageIdsByConversationId: {},
   receiptsByConversationId: {},
   userPresenceById: {},
+  typingByConversationId: {},
   nextConversationToken: null,
   messagesByConversationId: {},
   optimisticMessageIdsByRequestId: {},
@@ -400,6 +402,13 @@ const chatSlice = createSlice({
       if (state.currentUser?.userId === presence.userId) {
         state.currentUser = applyPresence(state.currentUser);
       }
+    },
+    typingUpdated(state, action: PayloadAction<TypingStatus>) {
+      const typing = action.payload;
+      state.typingByConversationId[typing.conversationId] = {
+        ...(state.typingByConversationId[typing.conversationId] ?? {}),
+        [typing.userId]: typing
+      };
     }
   },
   extraReducers: (builder) => {
@@ -641,6 +650,7 @@ export const {
   messageReceived,
   presenceUpdated,
   receiptUpdated,
+  typingUpdated,
   unarchiveConversation
 } = chatSlice.actions;
 export default chatSlice.reducer;

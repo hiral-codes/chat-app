@@ -11,6 +11,7 @@ type Props = {
   loading?: boolean;
   archivedConversationIds?: string[];
   unreadCountsByConversationId?: Record<string, number>;
+  typingNamesByConversationId?: Record<string, string[]>;
   mode?: "active" | "archived";
   emptyText?: string;
   onArchive?: (conversationId: string) => void;
@@ -53,6 +54,7 @@ export function ConversationList({
   loading = false,
   archivedConversationIds = [],
   unreadCountsByConversationId = {},
+  typingNamesByConversationId = {},
   mode = "active",
   emptyText = "No conversations yet. Start one with an email address.",
   onArchive,
@@ -89,6 +91,12 @@ export function ConversationList({
         const avatarUser = titleParticipants[0];
         const archived = archivedConversationIds.includes(conversation.conversationId);
         const unreadCount = unreadCountsByConversationId[conversation.conversationId] ?? 0;
+        const typingNames = typingNamesByConversationId[conversation.conversationId] ?? [];
+        const typingPreview = typingNames.length
+          ? typingNames.length === 1
+            ? `${typingNames[0]} is typing...`
+            : `${typingNames.join(", ")} are typing...`
+          : "";
         const online = titleParticipants.some((participant) => participant.onlineStatus === "online");
         const lastSeenAt = titleParticipants.find((participant) => participant.lastSeenAt)?.lastSeenAt;
         const presenceLabel = online ? "Online" : formatPresence(lastSeenAt);
@@ -107,8 +115,11 @@ export function ConversationList({
                   </div>
                   {unreadCount ? <span className="conversation-unread-badge">{unreadCount > 99 ? "99+" : unreadCount}</span> : null}
                 </div>
-                <div className={`conversation-preview ${unreadCount ? "conversation-preview-unread" : ""}`} title={preview}>
-                  {truncate(preview, 42)}
+                <div
+                  className={`conversation-preview ${unreadCount ? "conversation-preview-unread" : ""} ${typingPreview ? "conversation-preview-typing" : ""}`}
+                  title={typingPreview || preview}
+                >
+                  {truncate(typingPreview || preview, 42)}
                 </div>
                 <div className={`conversation-presence ${online ? "conversation-presence-online" : ""}`}>
                   <span aria-hidden="true" className="presence-dot" />

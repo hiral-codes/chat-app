@@ -31,3 +31,14 @@ export const onPresenceChangedSubscription = /* GraphQL */ `
     }
   }
 `;
+
+export const onTypingChangedSubscription = /* GraphQL */ `
+  subscription OnTypingChanged($conversationId: ID!) {
+    onTypingChanged(conversationId: $conversationId) {
+      conversationId
+      userId
+      isTyping
+      updatedAt
+    }
+  }
+`;

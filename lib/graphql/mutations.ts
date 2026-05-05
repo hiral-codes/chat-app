@@ -81,3 +81,14 @@ export const updatePresenceMutation = /* GraphQL */ `
     }
   }
 `;
+
+export const updateTypingMutation = /* GraphQL */ `
+  mutation UpdateTyping($conversationId: ID!, $isTyping: Boolean!) {
+    updateTyping(conversationId: $conversationId, isTyping: $isTyping) {
+      conversationId
+      userId
+      isTyping
+      updatedAt
+    }
+  }
+`;

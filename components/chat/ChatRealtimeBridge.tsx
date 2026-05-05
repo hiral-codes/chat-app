@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { markConversationDelivered, subscribeToConversationReceipts, subscribeToMessages, subscribeToPresence } from "@/lib/chat/api";
+import {
+  markConversationDelivered,
+  subscribeToConversationReceipts,
+  subscribeToMessages,
+  subscribeToPresence,
+  subscribeToTyping
+} from "@/lib/chat/api";
 import { useAppDispatch, useAppSelector } from "@/lib/store/hooks";
 import {
   initializeChat,
@@ -9,7 +15,8 @@ import {
   presenceUpdated,
   receiptUpdated,
   refreshChatSnapshot,
-  setPresence
+  setPresence,
+  typingUpdated
 } from "@/lib/store/chatSlice";
 
 export function ChatRealtimeBridge() {
@@ -35,7 +42,9 @@ export function ChatRealtimeBridge() {
   );
   const unsubscribeByConversationId = useRef<Record<string, () => void>>({});
   const unsubscribeReceiptByConversationId = useRef<Record<string, () => void>>({});
+  const unsubscribeTypingByConversationId = useRef<Record<string, () => void>>({});
   const unsubscribePresenceByUserId = useRef<Record<string, () => void>>({});
+  const typingTimeoutByKey = useRef<Record<string, number>>({});
   const deliveredSnapshotConversationIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -109,6 +118,49 @@ export function ChatRealtimeBridge() {
       unsubscribeReceiptByConversationId.current = {};
     };
   }, [conversationsInitialized, dispatch, selectedConversationId]);
+
+  useEffect(() => {
+    if (!conversationsInitialized) return;
+
+    const conversationIds = conversationIdsKey ? conversationIdsKey.split("|") : [];
+    for (const conversationId of conversationIds) {
+      if (unsubscribeTypingByConversationId.current[conversationId]) continue;
+
+      unsubscribeTypingByConversationId.current[conversationId] = subscribeToTyping(conversationId, (typing) => {
+        if (typing.userId === currentUserId) return;
+
+        const timeoutKey = `${typing.conversationId}:${typing.userId}`;
+        window.clearTimeout(typingTimeoutByKey.current[timeoutKey]);
+        dispatch(typingUpdated(typing));
+
+        if (typing.isTyping) {
+          typingTimeoutByKey.current[timeoutKey] = window.setTimeout(() => {
+            dispatch(
+              typingUpdated({
+                ...typing,
+                isTyping: false,
+                updatedAt: new Date().toISOString()
+              })
+            );
+            delete typingTimeoutByKey.current[timeoutKey];
+          }, 4000);
+        } else {
+          delete typingTimeoutByKey.current[timeoutKey];
+        }
+      });
+    }
+
+    return () => {
+      for (const unsubscribe of Object.values(unsubscribeTypingByConversationId.current)) {
+        unsubscribe();
+      }
+      for (const timeoutId of Object.values(typingTimeoutByKey.current)) {
+        window.clearTimeout(timeoutId);
+      }
+      unsubscribeTypingByConversationId.current = {};
+      typingTimeoutByKey.current = {};
+    };
+  }, [conversationIdsKey, conversationsInitialized, currentUserId, dispatch]);
 
   useEffect(() => {
     if (!conversationsInitialized) return;

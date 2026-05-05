@@ -12,6 +12,7 @@ type Props = {
   fullHeight?: boolean;
   seenMessageIds?: string[];
   peerReceipt?: ConversationReceipt;
+  typingNames?: string[];
 };
 
 const bottomThreshold = 96;
@@ -41,11 +42,21 @@ const statusForMessage = (message: Message, peerReceipt?: ConversationReceipt) =
   return message.deliveryStatus ?? "sent";
 };
 
-export function MessageList({ messages, currentUserId, participants = [], loading = false, fullHeight = false, seenMessageIds = [], peerReceipt }: Props) {
+export function MessageList({
+  messages,
+  currentUserId,
+  participants = [],
+  loading = false,
+  fullHeight = false,
+  seenMessageIds = [],
+  peerReceipt,
+  typingNames = []
+}: Props) {
   const participantById = new Map(participants.map((participant) => [participant.userId, participant]));
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const previousMessageCountRef = useRef(0);
   const previousLatestMessageIdRef = useRef<string | undefined>(undefined);
+  const previousTypingKeyRef = useRef("");
   const wasNearBottomRef = useRef(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [newMessagesCount, setNewMessagesCount] = useState(0);
@@ -105,6 +116,18 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
       });
     }
   }, [currentUserId, loading, messages, scrollToBottom]);
+
+  useEffect(() => {
+    if (loading) return;
+
+    const typingKey = typingNames.join("|");
+    const typingStarted = Boolean(typingKey) && typingKey !== previousTypingKeyRef.current;
+    previousTypingKeyRef.current = typingKey;
+
+    if (typingStarted && wasNearBottomRef.current) {
+      requestAnimationFrame(() => scrollToBottom("smooth"));
+    }
+  }, [loading, scrollToBottom, typingNames]);
 
   if (loading) {
     return (
@@ -172,6 +195,20 @@ export function MessageList({ messages, currentUserId, participants = [], loadin
             </div>
           );
         })}
+        {typingNames.length ? (
+          <div className="message-row">
+            <div className="typing-indicator" aria-live="polite">
+              <span className="typing-indicator-label">
+                {typingNames.length === 1 ? `${typingNames[0]} is typing` : `${typingNames.join(", ")} are typing`}
+              </span>
+              <span className="typing-indicator-dots" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
+            </div>
+          </div>
+        ) : null}
       </div>
       {showScrollButton ? (
         <button
